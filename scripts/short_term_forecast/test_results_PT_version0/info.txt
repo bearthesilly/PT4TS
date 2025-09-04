@@ -1,0 +1,1 @@
+这些结果都是PT没有做更进一步修改的实验结果。数据映射是MLP，但是其他实验的embedding不是MLP，而是DataEmbedding

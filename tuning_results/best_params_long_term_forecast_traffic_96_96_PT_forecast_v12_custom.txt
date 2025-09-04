@@ -1,0 +1,5 @@
+Best trial value (test_mse): 0.4126361310482025
+Best parameters:
+  learning_rate: 0.009636337078871758
+  d_model_d_ff_pair: (256, 1024)
+  e_layers: 4
