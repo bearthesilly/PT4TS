@@ -1,0 +1,16 @@
+Autoformer: 1293188
+Crossformer: 2935860
+DLinear: 6156520
+ETSformer: 1199455
+FEDformer: 1891083
+FiLM: 12603938
+Informer: 1499019
+iTransformer: 57150212
+LightTS: 3139154
+MICN: 5301019
+PatchTST: 734596
+Pyraformer: 3114084
+Reformer: 1245572
+TimesNet: 698612
+Transformer: 1295876
+PT: 703642

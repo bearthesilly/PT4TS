@@ -1,0 +1,6 @@
+einops==0.8.0
+local-attention==1.9.14
+patool==1.12
+reformer-pytorch==1.4.4
+sktime==0.16.1
+PyWavelets
