@@ -7,7 +7,7 @@ from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer,
     PT_forecast_v1, PT_forecast_v2, PT_forecast_v3, PT_forecast_v4, PT_forecast_v5, PT_forecast_v6, Transformer_ablation, PT_forecast_v7, PT_forecast_v8, \
     PT_forecast_v9, PT_forecast_v10, MLP, PT_forecast_v11, Transformer_vanilla, Transformer_exp, PT_forecast_v12, TSFusion, \
     Transformer_vanilla_implicit, Transformer_vanilla_explicit, PT_forecast_v12_period_first, PT_forecast_v12_period_second, \
-    PT_forecast_v12_time
+    PT_forecast_v12_time, PT_forecast_v12_hybrid, PT_forecast_v13
 
 
 class Exp_Basic(object):
@@ -71,7 +71,9 @@ class Exp_Basic(object):
             'Transformer_vanilla_explicit': Transformer_vanilla_explicit,
             'PT_forecast_v12_period_first': PT_forecast_v12_period_first,
             'PT_forecast_v12_period_second': PT_forecast_v12_period_second,
-            'PT_forecast_v12_time': PT_forecast_v12_time
+            'PT_forecast_v12_time': PT_forecast_v12_time,
+            'PT_forecast_v12_hybrid': PT_forecast_v12_hybrid,
+            'PT_forecast_v13': PT_forecast_v13
         }
         if args.model == 'Mamba':
             print('Please make sure you have successfully installed mamba_ssm')

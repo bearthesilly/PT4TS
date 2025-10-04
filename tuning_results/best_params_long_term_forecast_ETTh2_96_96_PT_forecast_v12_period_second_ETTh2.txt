@@ -1,5 +1,7 @@
-Best trial value (test_mse): 0.3112162947654724
+Best trial value (test_mse): 0.31111469864845276
 Best parameters:
-  learning_rate: 0.00159549443744279
-  d_model_d_ff_pair: (64, 256)
-  e_layers: 4
+  learning_rate: 0.001723309573905701
+  d_model_d_ff_pair: (64, 128)
+  e_layers: 2
+  trend_scale: 0.47519622868026623
+  period_scale: 0.4555114525859058

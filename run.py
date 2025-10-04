@@ -25,6 +25,10 @@ def objective(trial, args):
     args.d_model, args.d_ff = trial.suggest_categorical('d_model_d_ff_pair', d_model_d_ff_pairs)
     args.e_layers = trial.suggest_int('e_layers', 1, 4)
 
+    # For PT_forecast_v12_hybrid only: 
+    args.trend_scale = trial.suggest_float('trend_scale', 0.1, 10, log=True)
+    args.period_scale = trial.suggest_float('period_scale', 0.1, 10, log=True)
+    
     # 确保 d_ff 与 d_model 兼容
     # PT_forecast_v12 模型中的 config.dim_g 使用了 d_ff
     # PT_forecast_v12 模型中的 config.dim_z 使用了 d_model
