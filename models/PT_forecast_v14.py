@@ -138,10 +138,11 @@ class PtHeadSelection(nn.Module):
         super().__init__()
         self.config = config
         self.dim_z = args.d_model
+        self.enc_in = args.enc_in
+        # IMPORTANT: This is not the number of channels of the time series, but the number of channel in Head Dependency
         self.num_channels = config.num_channels
         self.ternary_rank = self.dim_z // self.num_channels
         self.rope_theta = config.rope_theta
-        self.is_causal = False
         self.regularize_h = 1/self.dim_z
         self.ternary_factor_u = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
         self.ternary_factor_v = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
@@ -152,15 +153,8 @@ class PtHeadSelection(nn.Module):
         nn.init.normal_(self.ternary_factor_u, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_v, mean=0.0, std=self.config.ternary_initializer_range)
 
-    def forward(
-        self,
-        qz: torch.Tensor,
-        dependency_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        output_dependencies: bool = False,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        bsz, seq_len, _ = qz.size()
+    def calculate_messageF(self, qz, dependency_mask=None, position_ids=None, position_embeddings=None):
+        bsz, seq_len, _ = qz.size() # this seq_len actually is enc_in, the number of channels of the time series
         qz_u = nn.functional.linear(qz, self.ternary_factor_u) * self.config.ternary_factor_scaling
         qz_v = nn.functional.linear(qz, self.ternary_factor_v) * self.config.ternary_factor_scaling
         qz_u = qz_u.view(bsz, seq_len, self.num_channels, self.ternary_rank).transpose(1, 2)
@@ -183,9 +177,12 @@ class PtHeadSelection(nn.Module):
                     f"Attention mask should be of size {(bsz, 1, seq_len, seq_len)}, but is {dependency_mask.size()}"
                 )
             message_F = message_F + dependency_mask # need mask diag
-        # upcast attention to fp32
-        qh = nn.functional.softmax(message_F / self.regularize_h, dim=-1, dtype=torch.float32).to(qz_u.dtype)
-        torch.cuda.empty_cache()  
+        return message_F, qz_u, qz_v, qz_uo, bsz, seq_len, qz_u.dtype
+
+    def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids=None, position_embeddings=None):
+        # torch.cuda.empty_cache()  
+        cos, sin = position_embeddings
+        rope_applier = RopeApplier(cos, sin, position_ids)
         qh_v1 = torch.matmul(qh, qz_v)
         # raise RuntimeError(qh.shape, qz_uo.shape) -> [4, 12, 1024, 1024], [4, 12, 1024, 64]
         qh_v2 = torch.matmul(qh.transpose(2, 3), qz_uo)
@@ -207,10 +204,72 @@ class PtHeadSelection(nn.Module):
         qh_v1 = qh_v1.reshape(bsz, seq_len, self.num_channels * self.ternary_rank)
         qh_v2 = qh_v2.reshape(bsz, seq_len, self.num_channels * self.ternary_rank)
         message_G = (torch.matmul(qh_v1, self.ternary_factor_u) + torch.matmul(qh_v2, self.ternary_factor_v)) * self.config.ternary_factor_scaling
-        if not output_dependencies:
-            qh = None
-        # raise RuntimeError(message_G.shape) -> [4, 1024, 768]
-        return message_G, qh
+        return message_G
+    
+    def forward(
+        self,
+        qz: torch.Tensor,
+        dependency_mask_channel: Optional[torch.Tensor] = None,
+        dependency_mask_time: Optional[torch.Tensor] = None,
+        position_ids_time: Optional[torch.LongTensor] = None,
+        position_ids_channel: Optional[torch.LongTensor] = None,
+        output_dependencies: bool = False,
+        position_embeddings_time: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        position_embeddings_channel: Optional[Tuple[torch.Tensor, torch.Tensor]] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # qz [bs, enc_in, length, dim_z]
+        bs, num_channel, length, _ = qz.size()
+        qz = qz.view(bs*length, num_channel, -1)
+        # raise RuntimeError(dependency_mask_channel.shape, dependency_mask_time.shape)
+        message_F_channel, qz_u_channel, qz_v_channel, qz_uo_channel, bsz_channel, seq_len_channel, type_channel = self.calculate_messageF(
+            qz,
+            dependency_mask=dependency_mask_channel,
+            position_ids=position_ids_channel,
+            position_embeddings=position_embeddings_channel,
+        )
+        qz = qz.view(bs*num_channel, length, -1)
+        message_F_time, qz_u_time, qz_v_time, qz_uo_time, bsz_time, seq_len_time, type_time= self.calculate_messageF(
+            qz,
+            dependency_mask=dependency_mask_time,
+            position_ids=position_ids_time,
+            position_embeddings=position_embeddings_time,
+        )
+        qz = qz.view(bs, num_channel, length, -1)
+        # raise RuntimeError(message_F_time.shape, message_F_channel.shape)
+        # Given two message F, combine them together (MAKE SURE THE DATA OF ONE Z VARIABLE IS CORRECTLY ALIGNED AND CONCATENATED)
+        mF_time_reshaped = message_F_time.view(bs, num_channel, self.num_channels, length, length).permute(0, 2, 1, 3, 4)
+        mF_channel_reshaped = message_F_channel.view(bs, length, self.num_channels, num_channel, num_channel).permute(0, 2, 3, 1, 4)
+        combined_qh_logits = torch.cat([mF_time_reshaped, mF_channel_reshaped], dim=-1)
+        combined_qh = nn.functional.softmax(combined_qh_logits / self.regularize_h, dim=-1, dtype=torch.float32)
+        # Split the result back into time and channel components
+        qh_time_combined, qh_channel_combined = torch.split(combined_qh, [length, num_channel], dim=-1)
+        # Reshape back to the original format expected by calculate_messageG
+        # [bs, num_heads, num_channel, length, length] -> [bs, num_channel, num_heads, length, length] -> [bs*num_channel, num_heads, length, length]
+        qh_time_output = qh_time_combined.permute(0, 2, 1, 3, 4)
+        qh_time = qh_time_output.reshape(bs * num_channel, self.num_channels, length, length).to(type_time)
+        # [bs, num_heads, num_channel, length, num_channel] -> [bs, length, num_heads, num_channel, num_channel] -> [bs*length, num_heads, num_channel, num_channel]
+        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)
+        qh_channel = qh_channel_output.permute(0, 3, 1, 2, 4).reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
+    
+        message_G_channel = self.calculate_messageG(
+            qh=qh_channel,
+            qz_uo=qz_uo_channel,
+            qz_v=qz_v_channel,
+            bsz=bsz_channel,
+            seq_len=seq_len_channel,
+            position_ids=position_ids_channel,
+            position_embeddings=position_embeddings_channel,
+        ).reshape(bs, num_channel, length, -1)
+        message_G_time = self.calculate_messageG(
+            qh=qh_time,
+            qz_uo=qz_uo_time,
+            qz_v=qz_v_time,
+            bsz=bsz_time,
+            seq_len=seq_len_time,
+            position_ids=position_ids_time,
+            position_embeddings=position_embeddings_time,
+        ).reshape(bs, num_channel, length, -1)
+        return message_G_time, message_G_channel, qh_time_output, qh_channel_output
 
 
 class PtTopicModeling(nn.Module):
@@ -222,13 +281,13 @@ class PtTopicModeling(nn.Module):
         self.dim_g = args.d_ff
         self.binary_factor = nn.Parameter(torch.empty(self.dim_g, self.dim_z))
         self.act = POTENTIAL2ACT[config.potential_func_g](dim=-1, eps=config.potential_eps)
-        
         self._init_binary()
         
     def _init_binary(self):
         nn.init.normal_(self.binary_factor, mean=0.0, std=self.config.binary_initializer_range)
 
     def forward(self, qz: torch.Tensor):
+        # qz [bs, enc_in, length, dim_z]
         qg = nn.functional.linear(qz, self.binary_factor) * self.config.binary_factor_scaling
         qg = self.act(qg / self.config.regularize_g)
         message_G = qg @ self.binary_factor * self.config.binary_factor_scaling
@@ -247,10 +306,13 @@ class PtEncoderIterator(nn.Module):
         self,
         unary_potentials: torch.Tensor,
         qz: torch.Tensor,
-        dependency_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
+        dependency_mask_channel: Optional[torch.Tensor] = None,
+        dependency_mask_time: Optional[torch.Tensor] = None,
+        position_ids_time: Optional[torch.LongTensor] = None,
+        position_ids_channel: Optional[torch.LongTensor] = None,
         output_dependencies: Optional[bool] = False,
-        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        position_embeddings_time: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        position_embeddings_channel: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         """z
         Args:
@@ -263,27 +325,28 @@ class PtEncoderIterator(nn.Module):
                 returned tensors for more detail.
         """
         old_qz = qz
-
         qz = self.norm(qz)
-
         # head selection
-        m1, qh = self.head_selection(
+        m_t, m_c, qh_t, qh_c = self.head_selection(
             qz=qz,
-            dependency_mask=dependency_mask,
-            position_ids=position_ids,
+            dependency_mask_channel=dependency_mask_channel,
+            dependency_mask_time = dependency_mask_time,
+            position_ids_time=position_ids_time,
+            position_ids_channel=position_ids_channel,
             output_dependencies=output_dependencies,
-            position_embeddings=position_embeddings,
+            position_embeddings_time=position_embeddings_time,
+            position_embeddings_channel=position_embeddings_channel,
         )
 
         # topic modeling
-        m2 = self.topic_modeling(qz)
+        m_g = self.topic_modeling(qz)
         # unary potentials
-        qz = (m1 + m2 + unary_potentials) / self.config.regularize_z
+        qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
         # damping
         qz = (qz + old_qz) * .5
         outputs = (qz,)
         if output_dependencies:
-            outputs += (qh,)
+            outputs += ((qh_t, qh_c),)
 
         return outputs
     
@@ -293,6 +356,8 @@ class PtModel(nn.Module):
     def __init__(self, args):
         super(PtModel, self).__init__()
         self.dim_z = args.d_model
+        # Here I manually set the patch length!!!!
+        self.patch_len = 8
         # self.padding_idx = config.pad_token_id
 
         # Simple linear projection. Bad performance!
@@ -306,31 +371,32 @@ class PtModel(nn.Module):
         config_copy.head_dim = config.ternary_rank
         config_copy.hidden_size = self.dim_z
         config_copy.num_attention_heads = config.num_channels
-        self.rotary_emb = LlamaRotaryEmbedding(config = config_copy)
-        
-        # self.pool = nn.AdaptiveAvgPool1d(1)
-        self.gradient_checkpointing = False
-        # self.fc = nn.Linear(self.dim_z, args.num_class)
+        self.rotary_emb_time = LlamaRotaryEmbedding(config = config_copy)
+        self.rotary_emb_channel = LlamaRotaryEmbedding(config = config_copy)
+        # Information about the time series
         self.pred_len = args.pred_len
-        self.seq_len = args.enc_in
+        self.seq_len = args.seq_len
+        self.enc_in = args.enc_in
         self.num_iteration = args.e_layers
-        # self.predict_1 = nn.Linear(
-        #         config.dim_z, args.c_out)
-        # Instead of linear transformation, we use MLP to improve expressiveness
-        self.prediction = nn.Linear(self.dim_z, self.pred_len, bias=True)
+        self.patch_num = self.seq_len // self.patch_len
+        # Decoder actually can have many ways to do that
+        # Project dim_z into 1. After all now is a test
+        self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
         
         if args.dropout != None:
             self.dropout = nn.Dropout(args.dropout)
 
+        # Currrently I embed one single point -> patch_len
         self.unary_factors = nn.Sequential(
-			nn.Linear(args.seq_len, self.dim_z*2),
+			nn.Linear(self.patch_len, self.dim_z*2),
             nn.GELU(),
 			nn.Linear(self.dim_z*2, self.dim_z)
 		)
 
+
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
+        time_series: torch.LongTensor = None,
         x_mark_enc = None,
         x_dec = None,
         dependency_mask: Optional[torch.Tensor] = None,
@@ -340,32 +406,56 @@ class PtModel(nn.Module):
         output_qzs: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ):
-        # preparing mask
-        means = input_ids.mean(1, keepdim=True).detach()
-        input_ids = input_ids - means
+        device = time_series.device
+        # Z-norm for the time series for each singel channel
+        means = time_series.mean(1, keepdim=True).detach()
+        time_series = time_series - means
         stdev = torch.sqrt(
-            torch.var(input_ids, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        input_ids /= stdev
-        input_ids = input_ids.transpose(1, 2) # [bs, length, enc_in] -> [bs, enc_in, length]
-        device = input_ids.device
-        dependency_mask = torch.ones((input_ids.shape[0], self.seq_len), device = device)
-        # Encode or Embedding, and then project into longer timesteps
-        unary_potentials = self.unary_factors(input_ids) 
-        seq_length = unary_potentials.size(1)
+            torch.var(time_series, dim=1, keepdim=True, unbiased=False) + 1e-5)
+        time_series /= stdev
 
+        # [bs, length, enc_in] -> [bs, enc_in, length]
+        time_series = time_series.transpose(1, 2) 
+        time_series = time_series.reshape(-1, self.enc_in, self.patch_num, self.patch_len)
+        unary_potentials = self.unary_factors(time_series) # [bs, enc_in, patch_num, dim_z]  
+        batch_size, enc_in, seq_len, _ = unary_potentials.shape
+        # seq is actually the patch number
+        dependency_mask_time = torch.ones((batch_size*enc_in, seq_len), device = device)
+        dependency_mask_channel = torch.ones((batch_size*seq_len, enc_in), device = device)
+
+        # Encode, here no patching is applied, so I will MLP a single data
+        # Since here no patching is applied, so unsqueeze at the end
+        unary_type = unary_potentials.dtype
+        # create position_ids as the original PT did
         if position_ids is None:
-            device = input_ids.device if input_ids is not None else unary_potentials.device
-            position_ids = torch.arange(
-                0, seq_length, dtype=torch.long, device=device
+            device = time_series.device if time_series is not None else unary_potentials.device
+            position_ids_time = torch.arange(
+                0, seq_len, dtype=torch.long, device=device
             )
-            position_ids = position_ids.unsqueeze(0)
-        dependency_mask = self._update_dependency_mask(
-            dependency_mask, unary_potentials, output_dependencies
+            position_ids_time = position_ids_time.unsqueeze(0)
+            position_ids_channel = torch.arange(
+                0, enc_in, dtype=torch.long, device=device
+            )
+            position_ids_channel = position_ids_channel.unsqueeze(0)
+        # update dependency mask
+        dependency_mask_channel = self._update_dependency_mask(
+            dependency_mask_channel, enc_in, output_dependencies, unary_type
         )
+        dependency_mask_time = self._update_dependency_mask(
+            dependency_mask_time, seq_len, output_dependencies, unary_type
+        )
+        # now the initial unary potential is qz, and qz will be updated
+        # [bs, enc_in, patch_num, dim_z]  
         qz = unary_potentials
-        position_embeddings = self.rotary_emb(qz, position_ids)
+        # for position_embedding_generation_channel
+        qz_for_pos_channel = unary_potentials.view(batch_size*seq_len, enc_in, -1)
+        # for position_embedding_generation
+        qz_for_pos_time = unary_potentials.view(batch_size*enc_in, seq_len, -1)
+        position_embeddings_time = self.rotary_emb_time(qz_for_pos_time, position_ids_time)
+        position_embeddings_channel = self.rotary_emb_channel(qz_for_pos_channel, position_ids_channel)
+        
 
-        # decoder layers
+        # The following codes remain the same
         all_qzs = () if output_qzs else None
         all_qhs = () if output_dependencies else None
 
@@ -376,10 +466,13 @@ class PtModel(nn.Module):
             iter_outputs = self.iterator(
                 unary_potentials,
                 qz,
-                dependency_mask=dependency_mask,
-                position_ids=position_ids,
+                dependency_mask_channel=dependency_mask_channel,
+                dependency_mask_time = dependency_mask_time,
+                position_ids_time=position_ids_time,
+                position_ids_channel=position_ids_channel,
                 output_dependencies=output_dependencies,
-                position_embeddings=position_embeddings,
+                position_embeddings_time=position_embeddings_time,
+                position_embeddings_channel=position_embeddings_channel
             )
             qz = iter_outputs[0]
             if output_dependencies:
@@ -387,12 +480,16 @@ class PtModel(nn.Module):
         # add hidden states from the last decoder layer
         if output_qzs:
             all_qzs += (qz,)
+        
+        # now qz should be [bs, enc_in, patch_num, dim_z]!!
 
-        # qz = self.norm(qz) # [bs, length, dim_z]
-        # If removing norm away, the performance is better???
-        bs = qz.shape[0]
-        # The qz above is equivalent to the enc_out whose timesteps are extended
-        dec_out = self.prediction(qz).permute(0, 2, 1)
+        # The following final norm is removed, as empirically, doing so will be better
+        # qz = self.norm(qz) 
+
+        # project dim_z to one value, since currently no patching is applied
+        dec_out = self.prediction(qz.reshape(batch_size, self.enc_in, -1)).permute(0, 2, 1) # [bs, pred_length, enc_in]
+        
+        # Normalize back
         dec_out = dec_out * \
                   (stdev[:, 0, :].unsqueeze(1).repeat(
                       1, self.pred_len, 1))
@@ -404,14 +501,12 @@ class PtModel(nn.Module):
 
     
     def _update_dependency_mask(
-        self, dependency_mask: torch.Tensor, unary_potentials: torch.Tensor, output_dependencies: bool
+        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type
     ) -> torch.Tensor:
-        
-        seq_length = unary_potentials.size(1)
-        
+
         attn_mask_converter = AttentionMaskConverter(is_causal=False)
         dependency_mask = attn_mask_converter.to_4d(
-            dependency_mask, seq_length, dtype=unary_potentials.dtype
+            dependency_mask, seq_length, dtype = type
         )
         
         # mask diagonals
@@ -421,19 +516,9 @@ class PtModel(nn.Module):
 
 
 class Model(nn.Module):
-    _tied_weights_keys = ["predictions.decoder.bias", "cls.predictions.decoder.weight"]
-
     def __init__(self, args):
         super(Model, self).__init__()
         self.model = PtModel(args)
-        # Initialize weights and apply final processing
-
-    def get_output_embeddings(self):
-        return self.cls.predictions.decoder
-
-    def set_output_embeddings(self, new_embeddings):
-        self.cls.predictions.decoder = new_embeddings
-        self.cls.predictions.bias = new_embeddings.bias
 
     def forward(
         self,
@@ -455,19 +540,12 @@ class Model(nn.Module):
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
-            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
+            config.vocab_size]` (see `time_series` docstring) Tokens with indices set to `-100` are ignored (masked), the
             loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
         """
         
+        # Actually, only the x_enc is not None, all the others are none
         outputs = self.model(
-            input_ids = x_enc,
-            x_mark_enc = x_mark_enc,
-            x_dec = x_dec,
-            dependency_mask=attention_mask,
-            position_ids=position_ids,
-            unary_potentials=inputs_embeds,
-            output_dependencies=output_attentions,
-            output_qzs=output_hidden_states,
-            return_dict=return_dict,
+            time_series = x_enc
         )
         return outputs

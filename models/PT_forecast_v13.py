@@ -322,11 +322,12 @@ class PtModel(nn.Module):
         if args.dropout != None:
             self.dropout = nn.Dropout(args.dropout)
 
-        self.unary_factors = nn.Sequential(
-			nn.Linear(args.seq_len, self.dim_z*2),
-            nn.GELU(),
-			nn.Linear(self.dim_z*2, self.dim_z)
-		)
+        # self.unary_factors = nn.Sequential(
+		# 	nn.Linear(args.seq_len, self.dim_z*2),
+        #     nn.GELU(),
+		# 	nn.Linear(self.dim_z*2, self.dim_z)
+		# )
+        self.embed = PTDataEmbedding(args.seq_len, self.dim_z)
 
     def forward(
         self,
@@ -350,7 +351,7 @@ class PtModel(nn.Module):
         device = input_ids.device
         dependency_mask = torch.ones((input_ids.shape[0], self.seq_len), device = device)
         # Encode or Embedding, and then project into longer timesteps
-        unary_potentials = self.unary_factors(input_ids) 
+        unary_potentials = self.embed(input_ids, None) 
         seq_length = unary_potentials.size(1)
 
         if position_ids is None:
