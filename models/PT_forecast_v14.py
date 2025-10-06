@@ -1,13 +1,20 @@
 '''
-In this model, we take the 'channel independence' skill
-We treat the time series of one channel as one token, instead of taking time steps with multi-channel feature as token
-The final task head is:
-[bs, channel_in, dim_z] -> [bs, channel_in, pred_len]
--> transpose -> [bs, pred_len, channel_in = channel_out]
-The prediction head is simple and its parameter amount accounts for small proportion
-But this model has the best performance!
+This model is called 'PT_cross'
+PT_channel has rather satisfying performance, but is lack of novelty
+Inspired by Crossformer in Time Series, we design 'PT_cross'
+For more information about this model, please refer to the model architecture illustrated
+in the epan folder
 
-Also in this model, the code will be formulated well for TSLib format!!!
+There will be a lot of stuff to tune:
+dim_z, dim_g, number of head, the design of unary potential and decoder
+number of iteration, learning rate, binary_factor_scaling, ternary_factor_scaling
+
+Please read the code carefully. I think this model variant can be the most competitive one 
+we've ever built, and can be even competitive to SOTA models.
+
+This code might be unfriendly w.r.t. memory management, and may have . 
+If you have any question or suggestion, please drop me a message any time! 
+
 '''
 import math
 import warnings
@@ -36,11 +43,8 @@ from typing import List, Optional
 
 @dataclass
 class Config:
-    dim_z: int = 256
-    dim_g: int = 1024
-    num_iterations: int = 12
+    # currently it is still a settled number, I will swtich it to be tunable later
     num_channels: int = 8
-    ternary_rank: int = 32
     potential_func_z: str = "square"
     potential_func_g: str = "abs"
     binary_initializer_range: float = 0.2
@@ -52,11 +56,7 @@ class Config:
     dropout_prob_z: float = 0.0
     dropout_prob_h: float = 0.0
     regularize_z: float = 1
-    regularize_h: float = 0.00390625
     regularize_g: float = 1.0
-    hidden_size: int = 768
-    output_qzs: bool = False
-
 
     def to_dict(self):
         return asdict(self)
@@ -143,20 +143,29 @@ class PtHeadSelection(nn.Module):
         self.num_channels = config.num_channels
         self.ternary_rank = self.dim_z // self.num_channels
         self.rope_theta = config.rope_theta
+        # This is settled! No need to tune.
         self.regularize_h = 1/self.dim_z
-        self.ternary_factor_u = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
-        self.ternary_factor_v = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
+        '''
+        Two sets of ternary UV factors, one for channel and one for time
+        '''
+        self.ternary_factor_u_time = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
+        self.ternary_factor_v_time = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
+        
+        self.ternary_factor_u_channel = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
+        self.ternary_factor_v_channel = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
         self.dropout = nn.Dropout(config.dropout_prob_h)
         self._init_ternary()
     
     def _init_ternary(self):
-        nn.init.normal_(self.ternary_factor_u, mean=0.0, std=self.config.ternary_initializer_range)
-        nn.init.normal_(self.ternary_factor_v, mean=0.0, std=self.config.ternary_initializer_range)
+        nn.init.normal_(self.ternary_factor_u_channel, mean=0.0, std=self.config.ternary_initializer_range)
+        nn.init.normal_(self.ternary_factor_v_channel, mean=0.0, std=self.config.ternary_initializer_range)
+        nn.init.normal_(self.ternary_factor_u_time, mean=0.0, std=self.config.ternary_initializer_range)
+        nn.init.normal_(self.ternary_factor_v_time, mean=0.0, std=self.config.ternary_initializer_range)
 
-    def calculate_messageF(self, qz, dependency_mask=None, position_ids=None, position_embeddings=None):
+    def calculate_messageF(self, qz, dependency_mask, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v):
         bsz, seq_len, _ = qz.size() # this seq_len actually is enc_in, the number of channels of the time series
-        qz_u = nn.functional.linear(qz, self.ternary_factor_u) * self.config.ternary_factor_scaling
-        qz_v = nn.functional.linear(qz, self.ternary_factor_v) * self.config.ternary_factor_scaling
+        qz_u = nn.functional.linear(qz, ternary_factor_u) * self.config.ternary_factor_scaling
+        qz_v = nn.functional.linear(qz, ternary_factor_v) * self.config.ternary_factor_scaling
         qz_u = qz_u.view(bsz, seq_len, self.num_channels, self.ternary_rank).transpose(1, 2)
         qz_v = qz_v.view(bsz, seq_len, self.num_channels, self.ternary_rank).transpose(1, 2)
         cos, sin = position_embeddings
@@ -179,7 +188,7 @@ class PtHeadSelection(nn.Module):
             message_F = message_F + dependency_mask # need mask diag
         return message_F, qz_u, qz_v, qz_uo, bsz, seq_len, qz_u.dtype
 
-    def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids=None, position_embeddings=None):
+    def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v):
         # torch.cuda.empty_cache()  
         cos, sin = position_embeddings
         rope_applier = RopeApplier(cos, sin, position_ids)
@@ -203,7 +212,7 @@ class PtHeadSelection(nn.Module):
         qh_v2 = qh_v2.transpose(1, 2).contiguous()
         qh_v1 = qh_v1.reshape(bsz, seq_len, self.num_channels * self.ternary_rank)
         qh_v2 = qh_v2.reshape(bsz, seq_len, self.num_channels * self.ternary_rank)
-        message_G = (torch.matmul(qh_v1, self.ternary_factor_u) + torch.matmul(qh_v2, self.ternary_factor_v)) * self.config.ternary_factor_scaling
+        message_G = (torch.matmul(qh_v1, ternary_factor_u) + torch.matmul(qh_v2, ternary_factor_v)) * self.config.ternary_factor_scaling
         return message_G
     
     def forward(
@@ -226,6 +235,8 @@ class PtHeadSelection(nn.Module):
             dependency_mask=dependency_mask_channel,
             position_ids=position_ids_channel,
             position_embeddings=position_embeddings_channel,
+            ternary_factor_u=self.ternary_factor_u_channel,
+            ternary_factor_v=self.ternary_factor_v_channel
         )
         qz = qz.view(bs*num_channel, length, -1)
         message_F_time, qz_u_time, qz_v_time, qz_uo_time, bsz_time, seq_len_time, type_time= self.calculate_messageF(
@@ -233,6 +244,8 @@ class PtHeadSelection(nn.Module):
             dependency_mask=dependency_mask_time,
             position_ids=position_ids_time,
             position_embeddings=position_embeddings_time,
+            ternary_factor_u=self.ternary_factor_u_time,
+            ternary_factor_v=self.ternary_factor_v_time
         )
         qz = qz.view(bs, num_channel, length, -1)
         # raise RuntimeError(message_F_time.shape, message_F_channel.shape)
@@ -259,6 +272,8 @@ class PtHeadSelection(nn.Module):
             seq_len=seq_len_channel,
             position_ids=position_ids_channel,
             position_embeddings=position_embeddings_channel,
+            ternary_factor_u=self.ternary_factor_u_channel,
+            ternary_factor_v=self.ternary_factor_v_channel
         ).reshape(bs, num_channel, length, -1)
         message_G_time = self.calculate_messageG(
             qh=qh_time,
@@ -268,6 +283,8 @@ class PtHeadSelection(nn.Module):
             seq_len=seq_len_time,
             position_ids=position_ids_time,
             position_embeddings=position_embeddings_time,
+            ternary_factor_u=self.ternary_factor_u_time,
+            ternary_factor_v=self.ternary_factor_v_time
         ).reshape(bs, num_channel, length, -1)
         return message_G_time, message_G_channel, qh_time_output, qh_channel_output
 
@@ -341,6 +358,9 @@ class PtEncoderIterator(nn.Module):
         # topic modeling
         m_g = self.topic_modeling(qz)
         # unary potentials
+        # m_t: message along the dimension of time stamp
+        # m_c: message along the dimension of channel
+        # m_g: message from global topic modeling
         qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
         # damping
         qz = (qz + old_qz) * .5
@@ -367,12 +387,18 @@ class PtModel(nn.Module):
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
 
         # XXX: This is a workaround to initialize the rotary embeddings
+        '''
+        Why we need two RoPE? Since the position mark along the channel and time dimension is not the same
+        When receiving channel information, the positional embedding should be related to the channel id
+        When receiving time information, the positional embedding should be related to the time stamp
+        '''
         config_copy = PtConfig.from_dict(config.to_dict())
-        config_copy.head_dim = config.ternary_rank
         config_copy.hidden_size = self.dim_z
         config_copy.num_attention_heads = config.num_channels
+        config_copy.head_dim = self.dim_z // config.num_channels
         self.rotary_emb_time = LlamaRotaryEmbedding(config = config_copy)
         self.rotary_emb_channel = LlamaRotaryEmbedding(config = config_copy)
+
         # Information about the time series
         self.pred_len = args.pred_len
         self.seq_len = args.seq_len
@@ -380,17 +406,19 @@ class PtModel(nn.Module):
         self.num_iteration = args.e_layers
         self.patch_num = self.seq_len // self.patch_len
         # Decoder actually can have many ways to do that
-        # Project dim_z into 1. After all now is a test
+        # Here I concatenate all the feature tensors with the dimension of dim_z, and project them into pred_len
+        # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
         
-        if args.dropout != None:
-            self.dropout = nn.Dropout(args.dropout)
+        # Currently, no dropout is deployed
+        # if args.dropout != None:
+        #     self.dropout = nn.Dropout(args.dropout)
 
-        # Currrently I embed one single point -> patch_len
+        # Currrently I embed self.patch_len points -> patch_len
         self.unary_factors = nn.Sequential(
-			nn.Linear(self.patch_len, self.dim_z*2),
+			nn.Linear(self.patch_len, self.dim_z),
             nn.GELU(),
-			nn.Linear(self.dim_z*2, self.dim_z)
+			nn.Linear(self.dim_z, self.dim_z)
 		)
 
 
@@ -418,13 +446,12 @@ class PtModel(nn.Module):
         time_series = time_series.transpose(1, 2) 
         time_series = time_series.reshape(-1, self.enc_in, self.patch_num, self.patch_len)
         unary_potentials = self.unary_factors(time_series) # [bs, enc_in, patch_num, dim_z]  
+        # [bs, enc_in, patch_num, dim_z]  
         batch_size, enc_in, seq_len, _ = unary_potentials.shape
         # seq is actually the patch number
         dependency_mask_time = torch.ones((batch_size*enc_in, seq_len), device = device)
         dependency_mask_channel = torch.ones((batch_size*seq_len, enc_in), device = device)
 
-        # Encode, here no patching is applied, so I will MLP a single data
-        # Since here no patching is applied, so unsqueeze at the end
         unary_type = unary_potentials.dtype
         # create position_ids as the original PT did
         if position_ids is None:
@@ -449,10 +476,10 @@ class PtModel(nn.Module):
         qz = unary_potentials
         # for position_embedding_generation_channel
         qz_for_pos_channel = unary_potentials.view(batch_size*seq_len, enc_in, -1)
+        position_embeddings_channel = self.rotary_emb_channel(qz_for_pos_channel, position_ids_channel)
         # for position_embedding_generation
         qz_for_pos_time = unary_potentials.view(batch_size*enc_in, seq_len, -1)
         position_embeddings_time = self.rotary_emb_time(qz_for_pos_time, position_ids_time)
-        position_embeddings_channel = self.rotary_emb_channel(qz_for_pos_channel, position_ids_channel)
         
 
         # The following codes remain the same
@@ -488,7 +515,6 @@ class PtModel(nn.Module):
 
         # project dim_z to one value, since currently no patching is applied
         dec_out = self.prediction(qz.reshape(batch_size, self.enc_in, -1)).permute(0, 2, 1) # [bs, pred_length, enc_in]
-        
         # Normalize back
         dec_out = dec_out * \
                   (stdev[:, 0, :].unsqueeze(1).repeat(
@@ -537,13 +563,6 @@ class Model(nn.Module):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple[torch.Tensor], MaskedLMOutput]:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
-            config.vocab_size]` (see `time_series` docstring) Tokens with indices set to `-100` are ignored (masked), the
-            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
-        """
-        
         # Actually, only the x_enc is not None, all the others are none
         outputs = self.model(
             time_series = x_enc
