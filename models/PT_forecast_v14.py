@@ -9,9 +9,6 @@ There will be a lot of stuff to tune:
 dim_z, dim_g, number of head, the design of unary potential and decoder
 number of iteration, learning rate, binary_factor_scaling, ternary_factor_scaling
 
-Please read the code carefully. I think this model variant can be the most competitive one 
-we've ever built, and can be even competitive to SOTA models.
-
 This code might be unfriendly w.r.t. memory management, and may have . 
 If you have any question or suggestion, please drop me a message any time! 
 
@@ -43,8 +40,6 @@ from typing import List, Optional
 
 @dataclass
 class Config:
-    # currently it is still a settled number, I will swtich it to be tunable later
-    num_channels: int = 8
     potential_func_z: str = "square"
     potential_func_g: str = "abs"
     binary_initializer_range: float = 0.2
@@ -140,7 +135,7 @@ class PtHeadSelection(nn.Module):
         self.dim_z = args.d_model
         self.enc_in = args.enc_in
         # IMPORTANT: This is not the number of channels of the time series, but the number of channel in Head Dependency
-        self.num_channels = config.num_channels
+        self.num_channels = args.n_heads
         self.ternary_rank = self.dim_z // self.num_channels
         self.rope_theta = config.rope_theta
         # This is settled! No need to tune.
@@ -377,7 +372,7 @@ class PtModel(nn.Module):
         super(PtModel, self).__init__()
         self.dim_z = args.d_model
         # Here I manually set the patch length!!!!
-        self.patch_len = 8
+        self.patch_len = args.patch_len
         # self.padding_idx = config.pad_token_id
 
         # Simple linear projection. Bad performance!
@@ -394,8 +389,8 @@ class PtModel(nn.Module):
         '''
         config_copy = PtConfig.from_dict(config.to_dict())
         config_copy.hidden_size = self.dim_z
-        config_copy.num_attention_heads = config.num_channels
-        config_copy.head_dim = self.dim_z // config.num_channels
+        config_copy.num_attention_heads = args.n_heads
+        config_copy.head_dim = self.dim_z // args.n_heads
         self.rotary_emb_time = LlamaRotaryEmbedding(config = config_copy)
         self.rotary_emb_channel = LlamaRotaryEmbedding(config = config_copy)
 
