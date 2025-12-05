@@ -303,9 +303,9 @@ class PtModel(nn.Module):
 
         # XXX: This is a workaround to initialize the rotary embeddings
         config_copy = PtConfig.from_dict(config.to_dict())
-        config_copy.head_dim = config.ternary_rank
         config_copy.hidden_size = self.dim_z
-        config_copy.num_attention_heads = config.num_channels
+        config_copy.num_attention_heads = args.n_heads
+        config_copy.head_dim = self.dim_z // args.n_heads
         self.rotary_emb = LlamaRotaryEmbedding(config = config_copy)
         
         # self.pool = nn.AdaptiveAvgPool1d(1)
