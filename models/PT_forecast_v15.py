@@ -1,7 +1,7 @@
 '''
-This model is called 'PT_cross'
+This model is called 'PT_hybrid', which is the backbone of ST-PT framework
 PT_channel has rather satisfying performance, but is lack of novelty
-Inspired by Crossformer in Time Series, we design 'PT_cross'
+Inspired by Crossformer in Time Series, we design 'PT_hybrid'
 For more information about this model, please refer to the model architecture illustrated
 in the epan folder
 
@@ -249,6 +249,9 @@ class PtHeadSelection(nn.Module):
         mF_time_reshaped = message_F_time.view(bs, num_channel, self.num_channels, length, length).permute(0, 2, 1, 3, 4)
         mF_channel_reshaped = message_F_channel.view(bs, length, self.num_channels, num_channel, num_channel).permute(0, 2, 3, 1, 4)
         combined_qh_logits = torch.cat([mF_time_reshaped, mF_channel_reshaped], dim=-1)
+        # Here we only have on H node for a Z variable (which stands for the dependency over the variables who share either the same channel or time step)
+        # which means the normalization is operated along both time and channel dimension
+        # And these two dimension's dependency can have competition. 
         combined_qh = nn.functional.softmax(combined_qh_logits / self.regularize_h, dim=-1, dtype=torch.float32)
         # Split the result back into time and channel components
         qh_time_combined, qh_channel_combined = torch.split(combined_qh, [length, num_channel], dim=-1)

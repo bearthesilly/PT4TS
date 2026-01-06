@@ -9,9 +9,11 @@ There will be a lot of stuff to tune:
 dim_z, dim_g, number of head, the design of unary potential and decoder
 number of iteration, learning rate, binary_factor_scaling, ternary_factor_scaling
 
-This code might be unfriendly w.r.t. memory management, and may have . 
-If you have any question or suggestion, please drop me a message any time! 
+This code might be unfriendly w.r.t. memory management.
 
+In this model, instead of using only one H variable, we use two, one for time and one for channel
+Which means the softmax normalization over the dependencies will be operated separately, not jointly
+The v15 and v14 joint norm can cause the competition between the two types of dependencies
 '''
 import math
 import warnings
@@ -223,16 +225,6 @@ class PtHeadSelection(nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # qz [bs, enc_in, length, dim_z]
         bs, num_channel, length, _ = qz.size()
-        qz = qz.view(bs*length, num_channel, -1)
-        # raise RuntimeError(dependency_mask_channel.shape, dependency_mask_time.shape)
-        message_F_channel, qz_u_channel, qz_v_channel, qz_uo_channel, bsz_channel, seq_len_channel, type_channel = self.calculate_messageF(
-            qz,
-            dependency_mask=dependency_mask_channel,
-            position_ids=position_ids_channel,
-            position_embeddings=position_embeddings_channel,
-            ternary_factor_u=self.ternary_factor_u_channel,
-            ternary_factor_v=self.ternary_factor_v_channel
-        )
         qz = qz.view(bs*num_channel, length, -1)
         message_F_time, qz_u_time, qz_v_time, qz_uo_time, bsz_time, seq_len_time, type_time= self.calculate_messageF(
             qz,
@@ -243,21 +235,45 @@ class PtHeadSelection(nn.Module):
             ternary_factor_v=self.ternary_factor_v_time
         )
         qz = qz.view(bs, num_channel, length, -1)
+        qz = qz.transpose(1,2).reshape(bs*length, num_channel, -1)
+        # raise RuntimeError(dependency_mask_channel.shape, dependency_mask_time.shape)
+        message_F_channel, qz_u_channel, qz_v_channel, qz_uo_channel, bsz_channel, seq_len_channel, type_channel = self.calculate_messageF(
+            qz,
+            dependency_mask=dependency_mask_channel,
+            position_ids=position_ids_channel,
+            position_embeddings=position_embeddings_channel,
+            ternary_factor_u=self.ternary_factor_u_channel,
+            ternary_factor_v=self.ternary_factor_v_channel
+        )
+        qz =qz.view(bs,length, num_channel,-1).transpose(1,2)
         # raise RuntimeError(message_F_time.shape, message_F_channel.shape)
         # Given two message F, combine them together (MAKE SURE THE DATA OF ONE Z VARIABLE IS CORRECTLY ALIGNED AND CONCATENATED)
         mF_time_reshaped = message_F_time.view(bs, num_channel, self.num_channels, length, length).permute(0, 2, 1, 3, 4)
         mF_channel_reshaped = message_F_channel.view(bs, length, self.num_channels, num_channel, num_channel).permute(0, 2, 3, 1, 4)
-        combined_qh_logits = torch.cat([mF_time_reshaped, mF_channel_reshaped], dim=-1)
-        combined_qh = nn.functional.softmax(combined_qh_logits / self.regularize_h, dim=-1, dtype=torch.float32)
-        # Split the result back into time and channel components
-        qh_time_combined, qh_channel_combined = torch.split(combined_qh, [length, num_channel], dim=-1)
-        # Reshape back to the original format expected by calculate_messageG
-        # [bs, num_heads, num_channel, length, length] -> [bs, num_channel, num_heads, length, length] -> [bs*num_channel, num_heads, length, length]
+
+        '''
+        In v15 and v14, the softmax normalization is done over two dimensions jointly
+        But this means that there's competition between the dependencies along time and channel dimension
+        Now, as an attempt, we try to separate the two normalization operations
+        '''
+
+        # combined_qh_logits = torch.cat([mF_time_reshaped, mF_channel_reshaped], dim=-1)
+        # # Here we only have on H node for a Z variable (which stands for the dependency over the variables who share either the same channel or time step)
+        # # which means the normalization is operated along both time and channel dimension
+        # # And these two dimension's dependency can have competition. 
+        # combined_qh = nn.functional.softmax(combined_qh_logits / self.regularize_h, dim=-1, dtype=torch.float32)
+        # # Split the result back into time and channel components
+        # qh_time_combined, qh_channel_combined = torch.split(combined_qh, [length, num_channel], dim=-1)
+        # # Reshape back to the original format expected by calculate_messageG
+        # # [bs, num_heads, num_channel, length, length] -> [bs, num_channel, num_heads, length, length] -> [bs*num_channel, num_heads, length, length]
+
+        qh_time_combined = nn.functional.softmax(mF_time_reshaped / self.regularize_h, dim=-1, dtype=torch.float32)
+        qh_channel_combined = nn.functional.softmax(mF_channel_reshaped / self.regularize_h, dim=-1, dtype=torch.float32)
         qh_time_output = qh_time_combined.permute(0, 2, 1, 3, 4)
         qh_time = qh_time_output.reshape(bs * num_channel, self.num_channels, length, length).to(type_time)
         # [bs, num_heads, num_channel, length, num_channel] -> [bs, length, num_heads, num_channel, num_channel] -> [bs*length, num_heads, num_channel, num_channel]
-        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)
-        qh_channel = qh_channel_output.permute(0, 3, 1, 2, 4).reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
+        qh_channel_output = qh_channel_combined.permute(0, 2, 3, 1, 4)
+        qh_channel = qh_channel_output.reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
     
         message_G_channel = self.calculate_messageG(
             qh=qh_channel,
@@ -359,11 +375,8 @@ class PtEncoderIterator(nn.Module):
         qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
         # damping
         qz = (qz + old_qz) * .5
-        outputs = (qz,)
-        if output_dependencies:
-            outputs += ((qh_t, qh_c),)
 
-        return outputs
+        return qz
     
 
 
@@ -470,11 +483,10 @@ class PtModel(nn.Module):
         # [bs, enc_in, patch_num, dim_z]  
         qz = unary_potentials
         # for position_embedding_generation_channel
-        qz_for_pos_channel = unary_potentials.view(batch_size*seq_len, enc_in, -1)
-        position_embeddings_channel = self.rotary_emb_channel(qz_for_pos_channel, position_ids_channel)
+
+        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.view(batch_size*seq_len, enc_in, -1), position_ids_channel)
         # for position_embedding_generation
-        qz_for_pos_time = unary_potentials.view(batch_size*enc_in, seq_len, -1)
-        position_embeddings_time = self.rotary_emb_time(qz_for_pos_time, position_ids_time)
+        position_embeddings_time = self.rotary_emb_time(unary_potentials.view(batch_size*enc_in, seq_len, -1), position_ids_time)
         
 
         # The following codes remain the same
@@ -485,7 +497,7 @@ class PtModel(nn.Module):
             if output_qzs:
                 all_qzs += (qz,)
 
-            iter_outputs = self.iterator(
+            qz = self.iterator(
                 unary_potentials,
                 qz,
                 dependency_mask_channel=dependency_mask_channel,
@@ -496,12 +508,9 @@ class PtModel(nn.Module):
                 position_embeddings_time=position_embeddings_time,
                 position_embeddings_channel=position_embeddings_channel
             )
-            qz = iter_outputs[0]
-            if output_dependencies:
-                all_qhs += (iter_outputs[1],)
         # add hidden states from the last decoder layer
-        if output_qzs:
-            all_qzs += (qz,)
+        # if output_qzs:
+        #     all_qzs += (qz,)
         
         # now qz should be [bs, enc_in, patch_num, dim_z]!!
 
