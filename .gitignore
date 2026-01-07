@@ -139,12 +139,13 @@ dmypy.json
 /test.py
 /m4_results/
 /test_results/
+/test_results_cache/
 /PatchTST_results.xlsx
 /seq_len_long_term_forecast/
 /progress.xlsx
 /scripts/short_term_forecast/PatchTST_M4.sh
 /run_tv.py
-
+/NextLat.pdf
 /scripts/long_term_forecast/ETT_tv_script/
 /dataset/
 /data/

@@ -1,7 +1,6 @@
 export CUDA_VISIBLE_DEVICES=0
-model_name=Crossformer
+model_name=PT_forecast_v15
 seed=2021
-
 # python -u run.py \
 #   --task_name long_term_forecast \
 #   --is_training 1 \
@@ -32,10 +31,10 @@ python -u run.py \
   --task_name long_term_forecast \
   --is_training 1 \
   --root_path ./dataset/toy_data/ \
-  --data_path toy_complex.csv \
-  --model_id toy_complex_experiment \
+  --data_path test_iid_data.npy \
+  --model_id toy_iid_test \
   --model $model_name \
-  --data custom \
+  --data toy \
   --features M \
   --seq_len 96 \
   --label_len 48 \
@@ -43,9 +42,9 @@ python -u run.py \
   --e_layers 2 \
   --d_layers 1 \
   --factor 3 \
-  --enc_in 10 \
-  --dec_in 10 \
-  --c_out 10 \
+  --enc_in 8 \
+  --dec_in 8 \
+  --c_out 8 \
   --d_model 64 \
   --d_ff 128 \
   --top_k 5 \

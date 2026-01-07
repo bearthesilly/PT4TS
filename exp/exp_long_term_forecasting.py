@@ -8,6 +8,7 @@ from torch import optim
 import os
 import time
 import warnings
+import matplotlib.pyplot as plt
 import numpy as np
 from utils.dtw_metric import dtw, accelerated_dtw
 from utils.augmentation import run_augmentation, run_augmentation_single
@@ -235,14 +236,55 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
                 preds.append(pred)
                 trues.append(true)
+                # if i % 20 == 0:
+                #     input = batch_x.detach().cpu().numpy()
+                #     if test_data.scale and self.args.inverse:
+                #         shape = input.shape
+                #         input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                #     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+                #     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                #     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
                 if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
+                    # 1. 准备数据
+                    input_data = batch_x.detach().cpu().numpy()
+                    
+                    # 反归一化处理 (保持原有逻辑)
                     if test_data.scale and self.args.inverse:
-                        shape = input.shape
-                        input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                        shape = input_data.shape
+                        input_data = test_data.inverse_transform(input_data.reshape(shape[0] * shape[1], -1)).reshape(shape)
+
+                    # 2. 确定可视化通道数 (前10个 或 全部)
+                    # data shape: [Batch, Seq_Len, Channels] -> 取 Channels 维度
+                    num_channels = min(10, input_data.shape[2]) 
+                    
+                    # 3. 创建画布 (垂直排列 num_channels 个子图)
+                    # figsize 宽12，高根据通道数自动拉长 (每个通道高2.5)
+                    fig, axes = plt.subplots(num_channels, 1, figsize=(12, 2.5 * num_channels), sharex=True)
+                    if num_channels == 1: axes = [axes] # 兼容单通道情况
+                    
+                    # 4. 循环绘制每个通道
+                    for c in range(num_channels):
+                        # 拼接: input历史 + ture/pred未来
+                        # [0, :, c] 取当前batch第0号样本的第c个通道
+                        gt_seq = np.concatenate((input_data[0, :, c], true[0, :, c]), axis=0)
+                        pd_seq = np.concatenate((input_data[0, :, c], pred[0, :, c]), axis=0)
+                        
+                        # 绘图
+                        axes[c].plot(gt_seq, label='GroundTruth', linewidth=1.5)
+                        axes[c].plot(pd_seq, label='Prediction', linewidth=1.5, linestyle='--')
+                        
+                        # 标出预测起始线 (Seq_Len 处)
+                        axes[c].axvline(x=input_data.shape[1], color='r', linestyle=':', alpha=0.5)
+                        
+                        axes[c].set_title(f'Channel {c}', fontsize=10)
+                        axes[c].legend(loc='upper right', fontsize=8)
+                    
+                    plt.tight_layout()
+                    
+                    # 5. 保存并关闭
+                    # 保持原有命名逻辑 str(i).pdf，但内容现在是多通道的了
+                    plt.savefig(os.path.join(folder_path, str(i) + '.pdf'), bbox_inches='tight')
+                    plt.close(fig) # 关键：释放内存，不显示
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
         print('test shape:', preds.shape, trues.shape)

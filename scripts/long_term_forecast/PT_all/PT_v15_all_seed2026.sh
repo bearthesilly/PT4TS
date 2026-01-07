@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0
 
 model_name=PT_forecast_v15
-seed=2021
+seed=2026
 
 # Exchange
 python -u run.py \

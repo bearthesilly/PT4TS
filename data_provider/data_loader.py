@@ -746,3 +746,148 @@ class UEAloader(Dataset):
 
     def __len__(self):
         return len(self.all_IDs)
+
+class Toy_Dataset(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='toy_data.npy',
+                 target='OT', scale=True, timeenc=0, freq='h', 
+                 train_ratio=0.7, test_ratio=0.2, args=None, seasonal_patterns=None):
+        """
+        Args:
+            args: 接收 data_factory 传入的 args 对象 (包含所有配置参数)
+        """
+        # 1. 优先处理 size 参数
+        if size == None:
+            # 如果 size 为空，尝试从 args 获取
+            if args is not None:
+                self.seq_len = args.seq_len
+                self.label_len = args.label_len
+                self.pred_len = args.pred_len
+            else:
+                self.seq_len = 24 * 4 * 4
+                self.label_len = 24 * 4
+                self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        
+        # 2. 初始化参数
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
+
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+        self.args = args # 保存 args 以备后用
+
+        self.root_path = root_path
+        self.data_path = data_path
+        
+        # 3. 关于切分比例，如果 args 里有定义则覆盖默认值
+        # 假设 bash 脚本里虽然没法直接传 train_ratio，但如果改代码添加了，这里能接住
+        if args is not None:
+            if hasattr(args, 'train_ratio'): 
+                self.train_ratio = args.train_ratio
+            else: 
+                self.train_ratio = train_ratio 
+            if hasattr(args, 'test_ratio'): 
+                self.test_ratio = args.test_ratio
+            else:
+                self.test_ratio = test_ratio
+        else:
+            self.train_ratio = train_ratio 
+            self.test_ratio = test_ratio
+
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        data_file = os.path.join(self.root_path, self.data_path)
+        
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f"Toy Dataset NPY file not found: {data_file}")
+            
+        raw_data = np.load(data_file)  # Shape: (N, L, C) or (N, T, C)
+        
+        # 检查数据长度是否足够
+        required_len = self.seq_len + self.pred_len
+        if raw_data.shape[1] < required_len:
+            raise ValueError(f"Instance length ({raw_data.shape[1]}) is shorter than seq_len + pred_len ({required_len})")
+
+        # 划分 Train / Val / Test
+        num_samples = raw_data.shape[0]
+        num_train = int(num_samples * self.train_ratio)
+        num_test = int(num_samples * self.test_ratio)
+        num_val = num_samples - num_train - num_test
+        
+        border1s = [0, num_train, num_samples - num_test]
+        border2s = [num_train, num_train + num_val, num_samples]
+        
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        # 拿到属于当前 flag (train/val/test) 的那部分数据
+        self.data_x = raw_data[border1:border2]
+        
+        # 标准化
+        if self.scale:
+            # 必须始终使用训练集的统计量
+            train_data = raw_data[border1s[0]:border2s[0]]
+            self.scaler.fit(train_data.reshape(-1, train_data.shape[-1]))
+            
+            shape = self.data_x.shape
+            self.data_x = self.scaler.transform(self.data_x.reshape(-1, shape[-1])).reshape(shape)
+
+        self.data_y = self.data_x 
+
+        # 构造虚假时间戳 (Dummy Timestamps)
+        L = self.data_x.shape[1]
+        dummy_dates = pd.date_range(start='2020-01-01', periods=L, freq=self.freq)
+        
+        df_stamp = pd.DataFrame(columns=['date'])
+        df_stamp['date'] = dummy_dates
+        
+        if self.timeenc == 0:
+            df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
+            df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
+            df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
+            df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+            data_stamp = df_stamp.drop(['date'], 1).values
+        elif self.timeenc == 1:
+            from utils.timefeatures import time_features
+            data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+
+        self.data_stamp = data_stamp
+
+    def __getitem__(self, index):
+        instance_x = self.data_x[index] 
+        instance_y = self.data_y[index]
+        
+        # 总是取序列的最后一段用于预测 (End-to-End matching)
+        # 这样确保模型的输入(Lookback)紧接着要预测的部分(Forecast)
+        L = instance_x.shape[0]
+        s_end = L - self.pred_len
+        s_begin = s_end - self.seq_len
+        
+        r_begin = s_end - self.label_len
+        r_end = s_end + self.pred_len
+        
+        seq_x = instance_x[s_begin:s_end]
+        seq_y = instance_y[r_begin:r_end]
+        
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        return len(self.data_x)
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+
