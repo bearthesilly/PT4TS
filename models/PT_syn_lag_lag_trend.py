@@ -52,6 +52,9 @@ class Config:
     dropout_prob_h: float = 0.0
     regularize_z: float = 1
     regularize_g: float = 1.0
+    # Lag prior (A delayed by tau affects B)
+    lag_tau_steps: int = 20
+    lag_prior_scaling: float = 1.0
 
     def to_dict(self):
         return asdict(self)
@@ -289,6 +292,60 @@ class PtHeadSelection(nn.Module):
         return message_G_time, message_G_channel, qh_time_output, qh_channel_output
 
 
+class PtExplicitHMM(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.dim_z = args.d_model
+        self.dim_m = 64 # The dimension of the markovian nodes
+        # WARNING: This value is designated manually. Hard coding! Caution!
+        self.enc_in = args.enc_in
+        self.binary_table_scaling = 1.0
+        self.regularize_g = 1.0
+        self.binary_table_initializer_range = 0.2
+        
+        # [enc_in, out_dim, in_dim] - For every variate, the parameters are not shared
+        self.binary_potential_table = nn.Parameter(torch.empty(self.enc_in, self.dim_m, self.dim_z)) # Z -> M
+        self.markovian_potential = nn.Parameter(torch.empty(self.enc_in, self.dim_m, self.dim_m))    # M -> M
+        
+        self.act = POTENTIAL2ACT[config.potential_func_g](dim=-1, eps=config.potential_eps)
+        self._init_ternary()
+    
+    def _init_ternary(self):
+        nn.init.normal_(self.binary_potential_table, mean=0.0, std=self.binary_table_initializer_range)
+        nn.init.normal_(self.markovian_potential, mean=0.0, std=self.binary_table_initializer_range)
+
+    def forward(self, qz, qm):
+        # qz shape: [bs, enc_in, length, dim_z]
+        
+        if (qm == None):
+            # qz @ B.T -> einsum('bcti,coi->bcto')
+            qm = torch.einsum('bcti,coi->bcto', qz, self.binary_potential_table) * self.binary_table_scaling
+            qm = self.act(qm / self.regularize_g)
+        # Updating M (Markovian Dynamics)
+        old_qm = qm
+        # message from right (future): qm @ M
+        back2front = torch.einsum('bcti,cio->bcto', qm, self.markovian_potential) * self.binary_table_scaling
+        
+        # message from left (past): qm @ M.T
+        front2back = torch.einsum('bcti,coi->bcto', qm, self.markovian_potential) * self.binary_table_scaling
+        # Shift Logic along time dimension (dim=2)
+        b2f = back2front.clone()
+        back2front[:, :, :-1, :] = b2f[:, :, 1:, :] # Shift left
+        back2front[:, :, -1, :] = 0
+        f2b = front2back.clone()
+        front2back[:, :, 1:, :] = f2b[:, :, :-1, :] # Shift right
+        front2back[:, :, 0, :] = 0
+        # Observation Potential: qz @ B.T
+        z2markov = torch.einsum('bcti,coi->bcto', qz, self.binary_potential_table) * self.binary_table_scaling
+        qm = (old_qm + back2front + front2back + z2markov) * .5 # damping
+        qm = self.act(qm / self.regularize_g)
+        # Message back to Z: qm @ B
+        markov2z = torch.einsum('bcti,cio->bcto', qm, self.binary_potential_table) * self.binary_table_scaling
+        
+        return markov2z, qm
+
+
+
 class PtTopicModeling(nn.Module):
     """Topic modeling w/ global nodes."""
     def __init__(self, args):
@@ -310,19 +367,115 @@ class PtTopicModeling(nn.Module):
         message_G = qg @ self.binary_factor * self.config.binary_factor_scaling
         return message_G
 
+
+class PtLagPrior(nn.Module):
+    """Lagged cross-channel prior: channel A at time t influences channel B at time t+tau.
+
+    Implemented as a pairwise potential which yields an extra mean-field message:
+        m_{A->B, tau}(Z_{B,j}) = lambda * W^T q(Z_{A,i})
+    where j corresponds to i shifted by tau (in patch units, with optional linear interpolation).
+    """
+    def __init__(self, args, relations=None, tau_steps=None):
+        super().__init__()
+        self.dim_z = args.d_model
+        self.enc_in = args.enc_in
+        self.patch_len = args.patch_len
+
+        # tau in raw time steps (not patches)
+        self.tau_steps = int(tau_steps) if tau_steps is not None else 8
+
+        # NEW default relations for the new synthetic lag dataset (enc_in=6):
+        # Ch0 -> Ch1, Ch2 -> Ch3, Ch4 -> Ch5
+        if relations is None:
+            relations = [(0, 1), (2, 3), (4, 5)]
+        self.relations = relations  # <-- 仍然显式保留
+
+        # scaling strength (avoid undefined `config`)
+        self.lag_prior_scaling = float(getattr(args, "lag_prior_scaling", 1.0))
+
+        # One weight matrix per relation (bilinear potential)
+        self.W = nn.ParameterList([
+            nn.Parameter(torch.empty(self.dim_z, self.dim_z)) for _ in self.relations
+        ])
+        self.lam = torch.ones(len(self.relations))  # strengths
+        self._init_params()
+
+    def _init_params(self):
+        for w in self.W:
+            nn.init.normal_(w, mean=0.0, std=0.02)
+
+    def forward(self, qz_norm: torch.Tensor) -> torch.Tensor:
+        """Compute lag prior messages in the logit space.
+
+        Args:
+            qz_norm: normalized qz, shape [bs, enc_in, patch_num, dim_z]
+        Returns:
+            lag_message: same shape as qz_norm, to be added into qz logits.
+        """
+        bs, enc_in, P, dim_z = qz_norm.shape
+        device = qz_norm.device
+        lag_message = torch.zeros((bs, enc_in, P, dim_z), device=device, dtype=qz_norm.dtype)
+
+        delta = self.tau_steps / float(self.patch_len)  # may be fractional
+
+        # Precompute mapping from src patch index -> (tgt_lo, tgt_hi, w_lo, w_hi)
+        src_idx = torch.arange(P, device=device, dtype=torch.float32)
+        tgt = src_idx + delta
+        lo = torch.floor(tgt).to(torch.long)          # [P]
+        hi = lo + 1                                  # [P]
+        w_hi = (tgt - lo.to(torch.float32)).to(qz_norm.dtype)  # [P]
+        w_lo = (1.0 - w_hi).to(qz_norm.dtype)                 # [P]
+
+        for r_idx, ((src_c, tgt_c), W_r) in enumerate(zip(self.relations, self.W)):
+            if src_c >= enc_in or tgt_c >= enc_in:
+                continue
+
+            # proj: [bs, P, dim_z]
+            proj = torch.matmul(qz_norm[:, src_c], W_r)
+            # There is a scaling factor here. 
+            strength = self.lam[r_idx] * 200.0
+
+            # Scatter-add with linear interpolation (same logic as your original, minimal change)
+            for p in range(P):
+                lo_p = lo[p]
+                hi_p = hi[p]
+                if 0 <= lo_p < P:
+                    lag_message[:, tgt_c, lo_p] = lag_message[:, tgt_c, lo_p] + strength * w_lo[p] * proj[:, p]
+                if 0 <= hi_p < P:
+                    lag_message[:, tgt_c, hi_p] = lag_message[:, tgt_c, hi_p] + strength * w_hi[p] * proj[:, p]
+
+        return lag_message
+
+
+
+
 class PtEncoderIterator(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.config = config
         self.dim_z = args.d_model
+        self.enc_in = args.enc_in
+
         self.head_selection = PtHeadSelection(args)
         self.topic_modeling = PtTopicModeling(args)
+        self.explicit_hmm = PtExplicitHMM(args)   # trend prior via Markovian nodes
+        self.lag_prior = PtLagPrior(args)         # lag prior (A delayed by tau affects B)
+
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
-    
+
+        # Only apply trend prior to channels 0 and 1 (as requested)
+        mask = torch.zeros((1, self.enc_in, 1, 1), dtype=torch.float32)
+        if self.enc_in > 0:
+            mask[:, 0] = 1.0
+        if self.enc_in > 1:
+            mask[:, 1] = 1.0
+        self.register_buffer("trend_channel_mask", mask)
+
     def forward(
         self,
         unary_potentials: torch.Tensor,
         qz: torch.Tensor,
+        qm: Optional[torch.Tensor] = None,
         dependency_mask_channel: Optional[torch.Tensor] = None,
         dependency_mask_time: Optional[torch.Tensor] = None,
         position_ids_time: Optional[torch.LongTensor] = None,
@@ -331,23 +484,17 @@ class PtEncoderIterator(nn.Module):
         position_embeddings_time: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         position_embeddings_channel: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
-        """z
-        Args:
-            qz (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            dependency_mask (`torch.FloatTensor`, *optional*):
-                attention mask of size `(batch_size, sequence_length)` if flash attention is used or `(batch_size, 1,
-                query_sequence_length, key_sequence_length)` if default attention is used.
-            output_dependencies (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-        """
         old_qz = qz
         qz = self.norm(qz)
-        # head selection
+
+        # lagged cross-channel prior message (in logit space)
+        m_lag = self.lag_prior(qz)
+
+        # head selection (ternary factors)
         m_t, m_c, qh_t, qh_c = self.head_selection(
             qz=qz,
             dependency_mask_channel=dependency_mask_channel,
-            dependency_mask_time = dependency_mask_time,
+            dependency_mask_time=dependency_mask_time,
             position_ids_time=position_ids_time,
             position_ids_channel=position_ids_channel,
             output_dependencies=output_dependencies,
@@ -355,18 +502,19 @@ class PtEncoderIterator(nn.Module):
             position_embeddings_channel=position_embeddings_channel,
         )
 
-        # topic modeling
-        m_g = self.topic_modeling(qz)
-        # unary potentials
-        # m_t: message along the dimension of time stamp
-        # m_c: message along the dimension of channel
-        # m_g: message from global topic modeling
-        qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
-        # damping
-        qz = (qz + old_qz) * .5
+        # trend prior (explicit HMM / Markovian nodes)
+        m_hmm, qm = self.explicit_hmm(qz, qm)
+        m_hmm = m_hmm * self.trend_channel_mask.to(m_hmm.dtype)
 
-        return qz
-    
+        # global topic modeling
+        m_g = self.topic_modeling(qz)
+
+        # MFVI-style update in logit space
+        qz = (m_t + m_c + m_g + m_lag + m_hmm + unary_potentials) / self.config.regularize_z
+
+        # damping
+        qz = (qz + old_qz) * 0.5
+        return qz, qm
 
 
 class PtModel(nn.Module):
@@ -406,6 +554,8 @@ class PtModel(nn.Module):
         # Here I concatenate all the feature tensors with the dimension of dim_z, and project them into pred_len
         # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
+        # Trend decoder head (only applied to channels 0 and 1)
+        self.prediction_trend = nn.Linear(self.patch_num * 64, self.pred_len, bias=True)
         
         # Currently, no dropout is deployed
         # if args.dropout != None:
@@ -481,14 +631,15 @@ class PtModel(nn.Module):
         # The following codes remain the same
         all_qzs = () if output_qzs else None
         all_qhs = () if output_dependencies else None
-
+        qm = None
         for idx in range(self.num_iteration):
             if output_qzs:
                 all_qzs += (qz,)
 
-            qz = self.iterator(
+            qz, qm = self.iterator(
                 unary_potentials,
-                qz,
+                qz = qz,
+                qm = qm,
                 dependency_mask_channel=dependency_mask_channel,
                 dependency_mask_time = dependency_mask_time,
                 position_ids_time=position_ids_time,
@@ -508,6 +659,9 @@ class PtModel(nn.Module):
 
         # project dim_z to one value, since currently no patching is applied
         dec_out = self.prediction(qz.reshape(batch_size, self.enc_in, -1)).permute(0, 2, 1) # [bs, pred_length, enc_in]
+        # Add trend component from qm only on channels 0 and 1
+        trend = self.prediction_trend(qm.reshape(batch_size, self.enc_in, -1)).permute(0, 2, 1)
+        dec_out += trend
         # Normalize back
         dec_out = dec_out * \
                   (stdev[:, 0, :].unsqueeze(1).repeat(

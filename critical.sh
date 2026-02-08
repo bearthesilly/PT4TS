@@ -1,0 +1,1 @@
+salloc -N 1 -n 12 -p critical -A renkan-critical --gres=gpu:NVIDIAL20:1 

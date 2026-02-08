@@ -1,5 +1,5 @@
 '''
-This model is called 'PT_hybrid', which is the backbone of ST-PT framework
+This model is based on the ST-PT backbone
 PT_channel has rather satisfying performance, but is lack of novelty
 Inspired by Crossformer in Time Series, we design 'PT_hybrid'
 For more information about this model, please refer to the model architecture illustrated
@@ -11,6 +11,8 @@ number of iteration, learning rate, binary_factor_scaling, ternary_factor_scalin
 
 This code might be unfriendly w.r.t. memory management, and may have . 
 If you have any question or suggestion, please drop me a message any time! 
+
+Based on the ST-PT backbone, aka, PT_hybrid, we bring in trend modeling in this model
 
 '''
 import math
@@ -289,6 +291,58 @@ class PtHeadSelection(nn.Module):
         return message_G_time, message_G_channel, qh_time_output, qh_channel_output
 
 
+class PtExplicitHMM(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.dim_z = args.d_model
+        self.dim_m = 64 # The dimension of the markovian nodes
+        # WARNING: This value is designated manually. Hard coding! Caution!
+        self.enc_in = args.enc_in
+        self.binary_table_scaling = 1.0
+        self.regularize_g = 1.0
+        self.binary_table_initializer_range = 0.2
+        
+        # [enc_in, out_dim, in_dim] - For every variate, the parameters are not shared
+        self.binary_potential_table = nn.Parameter(torch.empty(self.enc_in, self.dim_m, self.dim_z)) # Z -> M
+        self.markovian_potential = nn.Parameter(torch.empty(self.enc_in, self.dim_m, self.dim_m))    # M -> M
+        
+        self.act = POTENTIAL2ACT[config.potential_func_g](dim=-1, eps=config.potential_eps)
+        self._init_ternary()
+    
+    def _init_ternary(self):
+        nn.init.normal_(self.binary_potential_table, mean=0.0, std=self.binary_table_initializer_range)
+        nn.init.normal_(self.markovian_potential, mean=0.0, std=self.binary_table_initializer_range)
+
+    def forward(self, qz, qm):
+        # qz shape: [bs, enc_in, length, dim_z]
+        
+        if (qm == None):
+            # qz @ B.T -> einsum('bcti,coi->bcto')
+            qm = torch.einsum('bcti,coi->bcto', qz, self.binary_potential_table) * self.binary_table_scaling
+            qm = self.act(qm / self.regularize_g)
+        # Updating M (Markovian Dynamics)
+        old_qm = qm
+        # message from right (future): qm @ M
+        back2front = torch.einsum('bcti,cio->bcto', qm, self.markovian_potential) * self.binary_table_scaling
+        
+        # message from left (past): qm @ M.T
+        front2back = torch.einsum('bcti,coi->bcto', qm, self.markovian_potential) * self.binary_table_scaling
+        # Shift Logic along time dimension (dim=2)
+        b2f = back2front.clone()
+        back2front[:, :, :-1, :] = b2f[:, :, 1:, :] # Shift left
+        back2front[:, :, -1, :] = 0
+        f2b = front2back.clone()
+        front2back[:, :, 1:, :] = f2b[:, :, :-1, :] # Shift right
+        front2back[:, :, 0, :] = 0
+        # Observation Potential: qz @ B.T
+        z2markov = torch.einsum('bcti,coi->bcto', qz, self.binary_potential_table) * self.binary_table_scaling
+        qm = (old_qm + back2front + front2back + z2markov) * .5 # damping
+        qm = self.act(qm / self.regularize_g)
+        # Message back to Z: qm @ B
+        markov2z = torch.einsum('bcti,cio->bcto', qm, self.binary_potential_table) * self.binary_table_scaling
+        
+        return markov2z, qm
+
 class PtTopicModeling(nn.Module):
     """Topic modeling w/ global nodes."""
     def __init__(self, args):
@@ -310,6 +364,7 @@ class PtTopicModeling(nn.Module):
         message_G = qg @ self.binary_factor * self.config.binary_factor_scaling
         return message_G
 
+
 class PtEncoderIterator(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -317,12 +372,14 @@ class PtEncoderIterator(nn.Module):
         self.dim_z = args.d_model
         self.head_selection = PtHeadSelection(args)
         self.topic_modeling = PtTopicModeling(args)
+        self.explicit_hmm = PtExplicitHMM(args) 
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
     
     def forward(
         self,
         unary_potentials: torch.Tensor,
         qz: torch.Tensor,
+        qm: Optional[torch.Tensor] = None,
         dependency_mask_channel: Optional[torch.Tensor] = None,
         dependency_mask_time: Optional[torch.Tensor] = None,
         position_ids_time: Optional[torch.LongTensor] = None,
@@ -354,6 +411,8 @@ class PtEncoderIterator(nn.Module):
             position_embeddings_time=position_embeddings_time,
             position_embeddings_channel=position_embeddings_channel,
         )
+        # HMM
+        m_hmm, qm = self.explicit_hmm(qz, qm)
 
         # topic modeling
         m_g = self.topic_modeling(qz)
@@ -361,11 +420,11 @@ class PtEncoderIterator(nn.Module):
         # m_t: message along the dimension of time stamp
         # m_c: message along the dimension of channel
         # m_g: message from global topic modeling
-        qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
+        qz = (m_t + m_c + m_g + m_hmm + unary_potentials) / self.config.regularize_z
         # damping
         qz = (qz + old_qz) * .5
 
-        return qz
+        return qz, qm
     
 
 
@@ -373,6 +432,9 @@ class PtModel(nn.Module):
     def __init__(self, args):
         super(PtModel, self).__init__()
         self.dim_z = args.d_model
+        self.dim_m = 64 # The dimension of the markovian nodes
+        # WARNING: This value is designated manually. Hard coding! Caution!
+        
         # Here I manually set the patch length!!!!
         self.patch_len = args.patch_len
         # self.padding_idx = config.pad_token_id
@@ -406,7 +468,7 @@ class PtModel(nn.Module):
         # Here I concatenate all the feature tensors with the dimension of dim_z, and project them into pred_len
         # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
-        
+        self.prediction_trend = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
         # Currently, no dropout is deployed
         # if args.dropout != None:
         #     self.dropout = nn.Dropout(args.dropout)
@@ -481,14 +543,15 @@ class PtModel(nn.Module):
         # The following codes remain the same
         all_qzs = () if output_qzs else None
         all_qhs = () if output_dependencies else None
+        qm = None
 
         for idx in range(self.num_iteration):
             if output_qzs:
                 all_qzs += (qz,)
-
-            qz = self.iterator(
+            qz, qm = self.iterator(
                 unary_potentials,
-                qz,
+                qz = qz,
+                qm = qm,
                 dependency_mask_channel=dependency_mask_channel,
                 dependency_mask_time = dependency_mask_time,
                 position_ids_time=position_ids_time,
@@ -508,6 +571,8 @@ class PtModel(nn.Module):
 
         # project dim_z to one value, since currently no patching is applied
         dec_out = self.prediction(qz.reshape(batch_size, self.enc_in, -1)).permute(0, 2, 1) # [bs, pred_length, enc_in]
+        trend = self.prediction_trend(qm.reshape(batch_size, self.enc_in, -1)).permute(0, 2, 1)
+        dec_out += trend
         # Normalize back
         dec_out = dec_out * \
                   (stdev[:, 0, :].unsqueeze(1).repeat(

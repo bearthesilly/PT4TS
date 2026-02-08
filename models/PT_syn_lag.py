@@ -52,6 +52,9 @@ class Config:
     dropout_prob_h: float = 0.0
     regularize_z: float = 1
     regularize_g: float = 1.0
+    # Lag prior (A delayed by tau affects B)
+    lag_tau_steps: int = 20
+    lag_prior_scaling: float = 1.0
 
     def to_dict(self):
         return asdict(self)
@@ -134,6 +137,7 @@ class PtHeadSelection(nn.Module):
         self.config = config
         self.dim_z = args.d_model
         self.enc_in = args.enc_in
+
         # IMPORTANT: This is not the number of channels of the time series, but the number of channel in Head Dependency
         self.num_channels = args.n_heads
         self.ternary_rank = self.dim_z // self.num_channels
@@ -156,6 +160,7 @@ class PtHeadSelection(nn.Module):
         nn.init.normal_(self.ternary_factor_v_channel, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_u_time, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_v_time, mean=0.0, std=self.config.ternary_initializer_range)
+
 
     def calculate_messageF(self, qz, dependency_mask, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v):
         # Here the seq_len is actually the number of patch
@@ -310,6 +315,87 @@ class PtTopicModeling(nn.Module):
         message_G = qg @ self.binary_factor * self.config.binary_factor_scaling
         return message_G
 
+
+class PtLagPrior(nn.Module):
+    """Lagged cross-channel prior: channel A at time t influences channel B at time t+tau.
+
+    Implemented as a pairwise potential which yields an extra mean-field message:
+        m_{A->B, tau}(Z_{B,j}) = lambda * W^T q(Z_{A,i})
+    where j corresponds to i shifted by tau (in patch units, with optional linear interpolation).
+    """
+    def __init__(self, args, relations=None, tau_steps=None):
+        super().__init__()
+        self.dim_z = args.d_model
+        self.enc_in = args.enc_in
+        self.patch_len = args.patch_len
+
+        # tau in raw time steps (not patches)
+        self.tau_steps = int(tau_steps) if tau_steps is not None else 8
+
+        # NEW default relations for the new synthetic lag dataset (enc_in=6):
+        # Ch0 -> Ch1, Ch2 -> Ch3, Ch4 -> Ch5
+        if relations is None:
+            relations = [(0, 1), (2, 3), (4, 5)]
+        self.relations = relations  # <-- 仍然显式保留
+
+        # scaling strength (avoid undefined `config`)
+        self.lag_prior_scaling = float(getattr(args, "lag_prior_scaling", 1.0))
+
+        # One weight matrix per relation (bilinear potential)
+        self.W = nn.ParameterList([
+            nn.Parameter(torch.empty(self.dim_z, self.dim_z)) for _ in self.relations
+        ])
+        self.lam = torch.ones(len(self.relations))  # strengths
+        self._init_params()
+
+    def _init_params(self):
+        for w in self.W:
+            nn.init.normal_(w, mean=0.0, std=0.02)
+
+    def forward(self, qz_norm: torch.Tensor) -> torch.Tensor:
+        """Compute lag prior messages in the logit space.
+
+        Args:
+            qz_norm: normalized qz, shape [bs, enc_in, patch_num, dim_z]
+        Returns:
+            lag_message: same shape as qz_norm, to be added into qz logits.
+        """
+        bs, enc_in, P, dim_z = qz_norm.shape
+        device = qz_norm.device
+        lag_message = torch.zeros((bs, enc_in, P, dim_z), device=device, dtype=qz_norm.dtype)
+
+        delta = self.tau_steps / float(self.patch_len)  # may be fractional
+
+        # Precompute mapping from src patch index -> (tgt_lo, tgt_hi, w_lo, w_hi)
+        src_idx = torch.arange(P, device=device, dtype=torch.float32)
+        tgt = src_idx + delta
+        lo = torch.floor(tgt).to(torch.long)          # [P]
+        hi = lo + 1                                  # [P]
+        w_hi = (tgt - lo.to(torch.float32)).to(qz_norm.dtype)  # [P]
+        w_lo = (1.0 - w_hi).to(qz_norm.dtype)                 # [P]
+
+        for r_idx, ((src_c, tgt_c), W_r) in enumerate(zip(self.relations, self.W)):
+            if src_c >= enc_in or tgt_c >= enc_in:
+                continue
+
+            # proj: [bs, P, dim_z]
+            proj = torch.matmul(qz_norm[:, src_c], W_r)
+            # There is a scaling factor here. 
+            strength = self.lam[r_idx] * 200.0
+
+            # Scatter-add with linear interpolation (same logic as your original, minimal change)
+            for p in range(P):
+                lo_p = lo[p]
+                hi_p = hi[p]
+                if 0 <= lo_p < P:
+                    lag_message[:, tgt_c, lo_p] = lag_message[:, tgt_c, lo_p] + strength * w_lo[p] * proj[:, p]
+                if 0 <= hi_p < P:
+                    lag_message[:, tgt_c, hi_p] = lag_message[:, tgt_c, hi_p] + strength * w_hi[p] * proj[:, p]
+
+        return lag_message
+
+
+
 class PtEncoderIterator(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -317,6 +403,7 @@ class PtEncoderIterator(nn.Module):
         self.dim_z = args.d_model
         self.head_selection = PtHeadSelection(args)
         self.topic_modeling = PtTopicModeling(args)
+        self.lag_prior = PtLagPrior(args)
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
     
     def forward(
@@ -344,6 +431,8 @@ class PtEncoderIterator(nn.Module):
         old_qz = qz
         qz = self.norm(qz)
         # head selection
+        # lagged cross-channel prior message (in logit space)
+        m_lag = self.lag_prior(qz)
         m_t, m_c, qh_t, qh_c = self.head_selection(
             qz=qz,
             dependency_mask_channel=dependency_mask_channel,
@@ -361,6 +450,7 @@ class PtEncoderIterator(nn.Module):
         # m_t: message along the dimension of time stamp
         # m_c: message along the dimension of channel
         # m_g: message from global topic modeling
+        # qz = (m_t + m_c + m_g + m_lag + unary_potentials) / self.config.regularize_z
         qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
         # damping
         qz = (qz + old_qz) * .5
@@ -407,6 +497,11 @@ class PtModel(nn.Module):
         # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
         
+        # Channel-group isolation prior: block information passing across groups
+        # Default groups for synthetic lag: [(0, 1), (2, 3), (4, 5)]
+        self.channel_groups = getattr(args, 'channel_groups', [(0),(1),(2),(3),(4),(5)])
+        self.channel_group_bias = self._build_channel_group_bias(self.enc_in, self.channel_groups)
+
         # Currently, no dropout is deployed
         # if args.dropout != None:
         #     self.dropout = nn.Dropout(args.dropout)
@@ -417,6 +512,49 @@ class PtModel(nn.Module):
             nn.GELU(),
 			nn.Linear(self.dim_z, self.dim_z)
 		)
+    def _build_channel_group_bias(self, enc_in, channel_groups):
+        """
+        Build a [enc_in, enc_in] bias matrix for channel-dimension dependencies:
+        - within the same group: 0
+        - across groups: -inf
+        channel_groups can be:
+        - [(0,1), (2,3), (4,5)]  (list of tuples/lists)
+        - or [[0,1],[2,3],[4,5]]
+        """
+        # Normalize groups into list[list[int]]
+        groups = []
+        for g in channel_groups:
+            if isinstance(g, (tuple, list)):
+                groups.append(list(g))
+            else:
+                # if someone passes a single int by mistake
+                groups.append([int(g)])
+
+        # Map channel -> group id
+        ch2gid = {}
+        for gid, g in enumerate(groups):
+            for ch in g:
+                ch2gid[int(ch)] = gid
+
+        # Any channel not listed: put it in its own group (safe default)
+        next_gid = len(groups)
+        for ch in range(enc_in):
+            if ch not in ch2gid:
+                ch2gid[ch] = next_gid
+                next_gid += 1
+
+        # Build bias: same group => 0, different group => -inf
+        bias = torch.zeros((enc_in, enc_in), dtype=torch.float32)
+        neg_inf = torch.finfo(torch.float32).min  # works as -inf for softmax masking
+
+        for i in range(enc_in):
+            for j in range(enc_in):
+                if ch2gid[i] != ch2gid[j]:
+                    bias[i, j] = neg_inf
+
+        return bias
+
+
 
 
     def forward(
@@ -463,7 +601,8 @@ class PtModel(nn.Module):
             position_ids_channel = position_ids_channel.unsqueeze(0)
         # update dependency mask
         dependency_mask_channel = self._update_dependency_mask(
-            dependency_mask_channel, enc_in, output_dependencies, unary_type
+            dependency_mask_channel, enc_in, output_dependencies, unary_type,
+            group_bias_2d=self.channel_group_bias
         )
         dependency_mask_time = self._update_dependency_mask(
             dependency_mask_time, seq_len, output_dependencies, unary_type
@@ -516,18 +655,23 @@ class PtModel(nn.Module):
                   (means[:, 0, :].unsqueeze(1).repeat(
                       1, self.pred_len, 1))
         return dec_out
-
-
     
     def _update_dependency_mask(
-        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type
+        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type,
+        group_bias_2d: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
 
         attn_mask_converter = AttentionMaskConverter(is_causal=False)
         dependency_mask = attn_mask_converter.to_4d(
             dependency_mask, seq_length, dtype = type
         )
-        
+
+        # group-wise channel prior: block cross-group interactions if provided
+        if group_bias_2d is not None:
+            # group_bias_2d: [seq_length, seq_length] with 0 for allowed and -inf for blocked
+            gb = group_bias_2d.to(device=dependency_mask.device, dtype=dependency_mask.dtype)
+            dependency_mask = dependency_mask + gb.view(1, 1, seq_length, seq_length)
+
         # mask diagonals
         diag_mask = torch.eye(seq_length, dtype=dependency_mask.dtype, device=dependency_mask.device).unsqueeze(0).unsqueeze(0)
         dependency_mask = dependency_mask.masked_fill(diag_mask.to(torch.bool), torch.finfo(dependency_mask.dtype).min)

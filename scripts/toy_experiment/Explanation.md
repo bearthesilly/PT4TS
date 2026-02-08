@@ -16,3 +16,6 @@
 
 ## toy_data_attempt1&2
 这两个数据集稍微尝试了一下使用directory of prior中的先验指导生成，但是dataset质量估计非常的堪忧。。。
+
+## syn_periodicity.sh
+这个是用来验证periodicity建模的实验。对应的数据集是syn_period_generation.py
