@@ -261,8 +261,8 @@ class PtHeadSelection(nn.Module):
         qh_time_output = qh_time_combined.permute(0, 2, 1, 3, 4)
         qh_time = qh_time_output.reshape(bs * num_channel, self.num_channels, length, length).to(type_time)
         # [bs, num_heads, num_channel, length, num_channel] -> [bs, length, num_heads, num_channel, num_channel] -> [bs*length, num_heads, num_channel, num_channel]
-        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)
-        qh_channel = qh_channel_output.permute(0, 3, 1, 2, 4).reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
+        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)  # [bs, length, heads, num_channel, num_channel]
+        qh_channel = qh_channel_output.reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
     
         message_G_channel = self.calculate_messageG(
             qh=qh_channel,
@@ -473,7 +473,7 @@ class PtModel(nn.Module):
         qz = unary_potentials
         # for position_embedding_generation_channel
 
-        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.view(batch_size*seq_len, enc_in, -1), position_ids_channel)
+        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.transpose(1, 2).reshape(batch_size * seq_len, enc_in, -1), position_ids_channel)
         # for position_embedding_generation
         position_embeddings_time = self.rotary_emb_time(unary_potentials.view(batch_size*enc_in, seq_len, -1), position_ids_time)
         

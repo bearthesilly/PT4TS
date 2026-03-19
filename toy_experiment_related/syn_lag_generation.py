@@ -148,10 +148,10 @@ class CausalGenerator:
 if __name__ == "__main__":
     # 配置生成参数
     TAU_VAL = 8
-    gen = CausalGenerator(num_samples=150, sample_len=192, tau=TAU_VAL)
+    gen = CausalGenerator(num_samples=15000, sample_len=192, tau=TAU_VAL)
     
     # 保存路径建议匹配 run.sh 中的 data_path
-    save_path = f'./dataset/syn_data/lag_{TAU_VAL}_150.npy'
+    save_path = f'./dataset/syn_data/lag_{TAU_VAL}_15000.npy'
     data = gen.generate(save_path=save_path)
 
     # 可选: 可视化检查第一个样本

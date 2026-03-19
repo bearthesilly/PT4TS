@@ -316,85 +316,6 @@ class PtTopicModeling(nn.Module):
         return message_G
 
 
-class PtLagPrior(nn.Module):
-    """Lagged cross-channel prior: channel A at time t influences channel B at time t+tau.
-
-    Implemented as a pairwise potential which yields an extra mean-field message:
-        m_{A->B, tau}(Z_{B,j}) = lambda * W^T q(Z_{A,i})
-    where j corresponds to i shifted by tau (in patch units, with optional linear interpolation).
-    """
-    def __init__(self, args, relations=None, tau_steps=None):
-        super().__init__()
-        self.dim_z = args.d_model
-        self.enc_in = args.enc_in
-        self.patch_len = args.patch_len
-
-        # tau in raw time steps (not patches)
-        self.tau_steps = int(tau_steps) if tau_steps is not None else 8
-
-        # NEW default relations for the new synthetic lag dataset (enc_in=6):
-        # Ch0 -> Ch1, Ch2 -> Ch3, Ch4 -> Ch5
-        if relations is None:
-            relations = [(0, 1), (2, 3), (4, 5)]
-        self.relations = relations  # <-- 仍然显式保留
-
-        # scaling strength (avoid undefined `config`)
-        self.lag_prior_scaling = float(getattr(args, "lag_prior_scaling", 1.0))
-
-        # One weight matrix per relation (bilinear potential)
-        self.W = nn.ParameterList([
-            nn.Parameter(torch.empty(self.dim_z, self.dim_z)) for _ in self.relations
-        ])
-        self.lam = torch.ones(len(self.relations))  # strengths
-        self._init_params()
-
-    def _init_params(self):
-        for w in self.W:
-            nn.init.normal_(w, mean=0.0, std=0.02)
-
-    def forward(self, qz_norm: torch.Tensor) -> torch.Tensor:
-        """Compute lag prior messages in the logit space.
-
-        Args:
-            qz_norm: normalized qz, shape [bs, enc_in, patch_num, dim_z]
-        Returns:
-            lag_message: same shape as qz_norm, to be added into qz logits.
-        """
-        bs, enc_in, P, dim_z = qz_norm.shape
-        device = qz_norm.device
-        lag_message = torch.zeros((bs, enc_in, P, dim_z), device=device, dtype=qz_norm.dtype)
-
-        delta = self.tau_steps / float(self.patch_len)  # may be fractional
-
-        # Precompute mapping from src patch index -> (tgt_lo, tgt_hi, w_lo, w_hi)
-        src_idx = torch.arange(P, device=device, dtype=torch.float32)
-        tgt = src_idx + delta
-        lo = torch.floor(tgt).to(torch.long)          # [P]
-        hi = lo + 1                                  # [P]
-        w_hi = (tgt - lo.to(torch.float32)).to(qz_norm.dtype)  # [P]
-        w_lo = (1.0 - w_hi).to(qz_norm.dtype)                 # [P]
-
-        for r_idx, ((src_c, tgt_c), W_r) in enumerate(zip(self.relations, self.W)):
-            if src_c >= enc_in or tgt_c >= enc_in:
-                continue
-
-            # proj: [bs, P, dim_z]
-            proj = torch.matmul(qz_norm[:, src_c], W_r)
-            # There is a scaling factor here. 
-            strength = self.lam[r_idx] * 200.0
-
-            # Scatter-add with linear interpolation (same logic as your original, minimal change)
-            for p in range(P):
-                lo_p = lo[p]
-                hi_p = hi[p]
-                if 0 <= lo_p < P:
-                    lag_message[:, tgt_c, lo_p] = lag_message[:, tgt_c, lo_p] + strength * w_lo[p] * proj[:, p]
-                if 0 <= hi_p < P:
-                    lag_message[:, tgt_c, hi_p] = lag_message[:, tgt_c, hi_p] + strength * w_hi[p] * proj[:, p]
-
-        return lag_message
-
-
 
 class PtEncoderIterator(nn.Module):
     def __init__(self, args):
@@ -403,7 +324,6 @@ class PtEncoderIterator(nn.Module):
         self.dim_z = args.d_model
         self.head_selection = PtHeadSelection(args)
         self.topic_modeling = PtTopicModeling(args)
-        self.lag_prior = PtLagPrior(args)
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
     
     def forward(
@@ -432,7 +352,6 @@ class PtEncoderIterator(nn.Module):
         qz = self.norm(qz)
         # head selection
         # lagged cross-channel prior message (in logit space)
-        m_lag = self.lag_prior(qz)
         m_t, m_c, qh_t, qh_c = self.head_selection(
             qz=qz,
             dependency_mask_channel=dependency_mask_channel,
@@ -499,7 +418,7 @@ class PtModel(nn.Module):
         
         # Channel-group isolation prior: block information passing across groups
         # Default groups for synthetic lag: [(0, 1), (2, 3), (4, 5)]
-        self.channel_groups = getattr(args, 'channel_groups', [(0),(1),(2),(3),(4),(5)])
+        self.channel_groups = [(0, 1), (2, 3), (4, 5)]
         self.channel_group_bias = self._build_channel_group_bias(self.enc_in, self.channel_groups)
 
         # Currently, no dropout is deployed

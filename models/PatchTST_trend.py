@@ -48,40 +48,40 @@ class Model(nn.Module):
             configs.d_model, patch_len, stride, padding, configs.dropout)
 
         # Encoder
-        self.encoder = Encoder(
-            [
-                EncoderLayer(
-                    AttentionLayer(
-                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
-                                      output_attention=False), configs.d_model, configs.n_heads),
-                    configs.d_model,
-                    configs.d_ff,
-                    dropout=configs.dropout,
-                    activation=configs.activation
-                ) for l in range(configs.e_layers)
-            ],
-            norm_layer=nn.Sequential(Transpose(1,2), nn.BatchNorm1d(configs.d_model), Transpose(1,2))
-        )
-
-        # Encoder
         # self.encoder = Encoder(
         #     [
-        #         EncoderLayerWithMarkovFFN(
+        #         EncoderLayer(
         #             AttentionLayer(
         #                 FullAttention(False, configs.factor, attention_dropout=configs.dropout,
         #                               output_attention=False), configs.d_model, configs.n_heads),
         #             configs.d_model,
         #             configs.d_ff,
         #             dropout=configs.dropout,
-        #             activation=configs.activation,
-        #             markov_use_gate=True,
-        #             markov_n_heads=1,
-        #             markov_factor_rank=configs.d_ff//8,
-        #             markov_factor_bias=False
+        #             activation=configs.activation
         #         ) for l in range(configs.e_layers)
         #     ],
         #     norm_layer=nn.Sequential(Transpose(1,2), nn.BatchNorm1d(configs.d_model), Transpose(1,2))
         # )
+
+        # Encoder
+        self.encoder = Encoder(
+            [
+                EncoderLayerWithMarkovFFN(
+                    AttentionLayer(
+                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
+                                      output_attention=False), configs.d_model, configs.n_heads),
+                    configs.d_model,
+                    configs.d_ff,
+                    dropout=configs.dropout,
+                    activation=configs.activation,
+                    markov_use_gate=True,
+                    markov_n_heads=1,
+                    markov_factor_rank=configs.d_ff//8,
+                    markov_factor_bias=False
+                ) for l in range(configs.e_layers)
+            ],
+            norm_layer=nn.Sequential(Transpose(1,2), nn.BatchNorm1d(configs.d_model), Transpose(1,2))
+        )
 
         # Prediction Head
         self.head_nf = configs.d_model * \

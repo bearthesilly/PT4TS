@@ -1,13 +1,13 @@
 export CUDA_VISIBLE_DEVICES=0
-model_name=PT_forecast_v15
+model_name=PT_syn_period
 seed=2021
 
 python -u run.py \
   --task_name long_term_forecast \
   --is_training 1 \
   --root_path ./dataset/syn_data/ \
-  --data_path periodicity_1500.npy \
-  --model_id syn_period_1500_experiment \
+  --data_path periodicity_150.npy \
+  --model_id syn_period_150_experiment \
   --model $model_name \
   --data toy \
   --features M \
@@ -28,4 +28,5 @@ python -u run.py \
   --learning_rate 0.001 \
   --itr 1 \
   --patch_len 1 \
-  --n_heads 1
+  --n_heads 1 \
+  --train_epochs 10

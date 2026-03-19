@@ -19,7 +19,7 @@ warnings.filterwarnings('ignore')
 class Exp_Long_Term_Forecast(Exp_Basic):
     def __init__(self, args):
         super(Exp_Long_Term_Forecast, self).__init__(args)
-
+        self.args = args
     def _build_model(self):
         model = self.model_dict[self.args.model].Model(self.args).float()
 
@@ -157,6 +157,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     scaler.step(model_optim)
                     scaler.update()
                 else:
+                    if self.args.model in ['VAR','ARIMA','BVAR']:
+                        continue
                     loss.backward()
                     model_optim.step()
 

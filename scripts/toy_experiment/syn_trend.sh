@@ -1,13 +1,13 @@
 export CUDA_VISIBLE_DEVICES=0
-model_name=iTransformer
+model_name=PT_syn_trend
 seed=2021
 
 python -u run.py \
   --task_name long_term_forecast \
   --is_training 1 \
   --root_path ./dataset/syn_data/ \
-  --data_path trend_1500.npy \
-  --model_id syn_trend_1500_experiment \
+  --data_path trend_15000.npy \
+  --model_id syn_trend_15000_experiment \
   --model $model_name \
   --data toy \
   --features M \
