@@ -4,7 +4,31 @@ import torch.nn as nn
 
 class Model(nn.Module):
     """
-    Shared-coefficient VAR baseline (数值稳定版本)
+    Vector Autoregression (VAR) baseline for multivariate time series forecasting.
+
+    Mathematical formulation:
+        y_t = c + A_1 * y_{t-1} + A_2 * y_{t-2} + ... + A_p * y_{t-p} + e_t
+
+    where:
+        y_t     : K-dimensional observation at time t
+        c       : K-dimensional intercept vector
+        A_i     : K x K coefficient matrix for lag i
+        p       : lag order
+        e_t     : K-dimensional white noise with covariance Sigma
+
+    Estimation uses Ridge-regularized OLS on the companion form:
+        Y = X @ B + E
+    where B = [c, A_1, ..., A_p]^T  (shape: (1+pK) x K)
+
+    This model is a non-learning statistical baseline. It fits per-sample at
+    inference time (each input window gets its own VAR coefficients), so it
+    requires NO gradient-based training. The training loop is effectively a
+    no-op; the model evaluates identically whether you "train" 0 or 100 epochs.
+
+    Compatibility:
+        - Inherits nn.Module so it plugs into the exp/ framework.
+        - A dummy parameter exists so the optimizer doesn't crash.
+        - forward() signature matches the standard (x_enc, x_mark_enc, x_dec, x_mark_dec).
     """
 
     def __init__(self, configs):
@@ -16,239 +40,211 @@ class Model(nn.Module):
 
         default_lag = min(5, max(1, self.seq_len // 10))
         self.lag_order = int(getattr(configs, 'lag_order', default_lag))
+        self.ridge = float(getattr(configs, 'var_ridge', 1e-2))
 
-        # 增大 Ridge 正则化强度
-        self.ridge = float(getattr(configs, 'var_ridge', 1e-2))  # 从 1e-4 改为 1e-2
+        # Dummy parameter so optimizer / state_dict don't break
+        self.dummy_param = nn.Parameter(torch.zeros(1), requires_grad=False)
 
-        self.coefficients = None
-        self.sigma = None
-        self.fitted = False
+    # ------------------------------------------------------------------
+    # Core VAR math
+    # ------------------------------------------------------------------
 
-        # 数据标准化参数
-        self.data_mean = None
-        self.data_std = None
+    def _fit_and_forecast(self, x, pred_len):
+        """
+        Fit a VAR(p) model on each sample independently, then forecast.
 
-        self.dummy_param = nn.Parameter(torch.zeros(1), requires_grad=True)
+        Args:
+            x: (B, T, K) — input time series (already scaled by the dataloader)
+            pred_len: int — number of future steps to predict
 
-    def reset_fit(self):
-        self.coefficients = None
-        self.sigma = None
-        self.fitted = False
-        self.data_mean = None
-        self.data_std = None
-
-    def _check_input(self, y):
-        """检查输入数据是否有效"""
-        if torch.isnan(y).any():
-            raise ValueError("Input contains NaN values")
-        if torch.isinf(y).any():
-            raise ValueError("Input contains Inf values")
-
-    def _normalize(self, y):
-        """标准化数据"""
-        self.data_mean = y.mean(dim=(0, 1), keepdim=True)  # (1, 1, K)
-        self.data_std = y.std(dim=(0, 1), keepdim=True) + 1e-8  # (1, 1, K)
-        return (y - self.data_mean) / self.data_std
-
-    def _denormalize(self, y):
-        """反标准化"""
-        if self.data_mean is None or self.data_std is None:
-            return y
-        return y * self.data_std + self.data_mean
-
-    def _prepare_var_data(self, y):
-        B, T, K = y.shape
+        Returns:
+            preds: (B, pred_len, K)
+        """
+        B, T, K = x.shape
         p = self.lag_order
+        device = x.device
+        dtype = x.dtype
 
-        if K != self.enc_in:
-            raise ValueError(f"Input feature dim K={K} != enc_in={self.enc_in}")
         if T <= p:
-            raise ValueError(f"seq_len T={T} must be larger than lag_order p={p}")
+            # Not enough history — fall back to naive persistence
+            return x[:, -1:, :].expand(B, pred_len, K).clone()
 
-        Y = y[:, p:, :]
+        # ---- Per-sample instance normalization (reversible) ----
+        # This removes per-sample level/scale so the VAR operates on
+        # standardized residuals, which is standard practice.
+        seq_mean = x.mean(dim=1, keepdim=True)          # (B, 1, K)
+        seq_std = x.std(dim=1, keepdim=True) + 1e-8     # (B, 1, K)
+        x_norm = (x - seq_mean) / seq_std
 
-        X_parts = [torch.ones(B, T - p, 1, device=y.device, dtype=y.dtype)]
+        # ---- Build regression matrices per sample ----
+        # Y_t = c + A_1 y_{t-1} + ... + A_p y_{t-p}
+        # Stack into:  Y = X @ B   where B is (1+pK, K)
+        #
+        # Y: (B, T-p, K)
+        # X: (B, T-p, 1+pK)   — leading 1 column for intercept
+        Y = x_norm[:, p:, :]                             # (B, T-p, K)
+        Teff = T - p
+
+        X_parts = [torch.ones(B, Teff, 1, device=device, dtype=dtype)]
         for i in range(1, p + 1):
-            X_parts.append(y[:, p - i:T - i, :])
-        X = torch.cat(X_parts, dim=-1)
-        return Y, X
+            X_parts.append(x_norm[:, p - i: T - i, :])  # lag i
+        X = torch.cat(X_parts, dim=-1)                   # (B, Teff, 1+pK)
 
-    def _ols_estimate_shared(self, Y, X):
-        """
-        数值稳定的 OLS 估计
-        """
-        Bsz, Teff, K = Y.shape
-        D = X.shape[-1]
+        D = 1 + p * K
 
-        X2 = X.reshape(Bsz * Teff, D)
-        Y2 = Y.reshape(Bsz * Teff, K)
+        # ---- Ridge OLS:  B = (X'X + lambda I)^{-1} X'Y  per sample ----
+        # We batch this with bmm.
+        Xt = X.transpose(1, 2)                           # (B, D, Teff)
+        XtX = torch.bmm(Xt, X)                           # (B, D, D)
+        XtY = torch.bmm(Xt, Y)                           # (B, D, K)
 
-        XtX = X2.transpose(0, 1) @ X2
-        XtY = X2.transpose(0, 1) @ Y2
-
-        # 方法1: 更强的 Ridge 正则化
-        eye = torch.eye(D, device=X.device, dtype=X.dtype)
+        eye = torch.eye(D, device=device, dtype=dtype).unsqueeze(0)  # (1, D, D)
         XtX_reg = XtX + self.ridge * eye
 
-        # 方法2: 检查条件数，如果太大则增加正则化
+        # Use torch.linalg.solve for numerical stability (solves AX=B)
+        # coef: (B, D, K)
         try:
-            cond = torch.linalg.cond(XtX_reg)
-            if cond > 1e10:
-                # 条件数过大，增加正则化
-                XtX_reg = XtX + (self.ridge * 10) * eye
-        except:
-            pass
-
-        # 方法3: 使用 lstsq 代替 solve（更稳定）
-        try:
-            # lstsq 更加数值稳定
-            coef, _, _, _ = torch.linalg.lstsq(XtX_reg, XtY)
-        except:
-            # 备用方案：使用 solve
+            coef = torch.linalg.solve(XtX_reg, XtY)
+        except Exception:
+            # Fallback: heavier regularization
+            XtX_reg = XtX + eye
             coef = torch.linalg.solve(XtX_reg, XtY)
 
-        # 检查结果是否有效
-        if torch.isnan(coef).any() or torch.isinf(coef).any():
-            # 如果结果无效，使用更强的正则化重试
-            XtX_reg = XtX + eye  # 正则化系数设为 1
-            coef = torch.linalg.solve(XtX_reg, XtY)
+        # Clamp to prevent explosive coefficients
+        coef = torch.clamp(coef, -10.0, 10.0)
 
-        # 限制系数范围，防止过大
-        coef = torch.clamp(coef, min=-10.0, max=10.0)
-
-        return coef.transpose(0, 1).contiguous()
-
-    def _check_stability(self, A_list):
-        """
-        检查 VAR 系统的稳定性
-        如果特征值模大于1，系统不稳定，需要缩放系数
-        """
-        K = self.enc_in
-        p = self.lag_order
-
-        # 构建伴随矩阵
-        companion = torch.zeros(K * p, K * p, device=A_list[0].device, dtype=A_list[0].dtype)
-
-        # 填充第一行块
-        for i, A in enumerate(A_list):
-            companion[:K, i * K:(i + 1) * K] = A
-
-        # 填充下方的单位矩阵块
-        if p > 1:
-            companion[K:, :K * (p - 1)] = torch.eye(K * (p - 1), device=companion.device, dtype=companion.dtype)
-
-        # 计算特征值
-        try:
-            eigenvalues = torch.linalg.eigvals(companion)
-            max_eigenvalue = torch.abs(eigenvalues).max().item()
-
-            # 如果不稳定，缩放系数
-            if max_eigenvalue > 0.99:
-                scale = 0.95 / max_eigenvalue
-                return [A * scale for A in A_list], True
-        except:
-            pass
-
-        return A_list, False
-
-    @torch.no_grad()
-    def fit_global(self, x_enc):
-        # 检查输入
-        self._check_input(x_enc)
-
-        # 标准化
-        x_norm = self._normalize(x_enc)
-
-        Y, X = self._prepare_var_data(x_norm)
-        coef = self._ols_estimate_shared(Y, X)
-
-        # 残差协方差
-        Y_pred = X @ coef.transpose(0, 1)
-        residuals = Y - Y_pred
-        Bsz, Teff, K = residuals.shape
-        R = residuals.reshape(Bsz * Teff, K)
-
-        denom = max(R.shape[0] - (1 + self.enc_in * self.lag_order), 1)
-        sigma = (R.transpose(0, 1) @ R) / float(denom)
-
-        self.coefficients = coef
-        self.sigma = sigma
-        self.fitted = True
-
-    def _extract_A_and_c(self):
-        if not self.fitted or self.coefficients is None:
-            raise RuntimeError("VAR model is not fitted yet.")
-
-        coef = self.coefficients
-        c = coef[:, 0]
+        # ---- Extract intercept c and lag matrices A_i ----
+        c = coef[:, 0, :]                                # (B, K)
         A_list = []
-        for i in range(self.lag_order):
-            start = 1 + i * self.enc_in
-            end = 1 + (i + 1) * self.enc_in
-            A_list.append(coef[:, start:end])
+        for i in range(p):
+            start = 1 + i * K
+            A_list.append(coef[:, start: start + K, :])  # (B, K, K)
 
-        # 检查并确保稳定性
-        A_list, was_scaled = self._check_stability(A_list)
-
-        return c, A_list
-
-    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        if not self.fitted:
-            self.fit_global(x_enc)
-
-        B, T, K = x_enc.shape
-        p = self.lag_order
-        c, A_list = self._extract_A_and_c()
-
-        # 对输入进行标准化
-        x_norm = (x_enc - self.data_mean) / self.data_std
-
-        history = x_norm[:, -p:, :].clone()
+        # ---- Iterative forecasting ----
+        history = x_norm[:, -p:, :].clone()               # (B, p, K)
         preds = []
 
-        for step in range(self.pred_len):
-            y_new = c.unsqueeze(0).expand(B, -1).clone()
+        for _ in range(pred_len):
+            y_new = c.clone()                             # (B, K)
             for i, A in enumerate(A_list):
-                y_lag = history[:, -(i + 1), :]
-                y_new = y_new + (y_lag @ A.transpose(0, 1))
+                y_lag = history[:, -(i + 1), :]           # (B, K)
+                # y_lag @ A  gives (B, K) — each sample's lag multiplied
+                # by its own coefficient matrix
+                y_new = y_new + torch.bmm(
+                    y_lag.unsqueeze(1), A
+                ).squeeze(1)
 
-            # 限制预测值范围，防止爆炸
-            y_new = torch.clamp(y_new, min=-10.0, max=10.0)
-
+            # Clamp predictions in normalized space
+            y_new = torch.clamp(y_new, -10.0, 10.0)
             preds.append(y_new.unsqueeze(1))
+
+            # Shift history window
             history = torch.cat([history[:, 1:, :], y_new.unsqueeze(1)], dim=1)
 
-        result = torch.cat(preds, dim=1)
+        result = torch.cat(preds, dim=1)                  # (B, pred_len, K)
 
-        # 反标准化
-        result = self._denormalize(result)
+        # ---- Reverse instance normalization ----
+        result = result * seq_std + seq_mean
 
-        # 最终检查
-        if torch.isnan(result).any() or torch.isinf(result).any():
-            # 如果仍有问题，返回简单的持续性预测
-            result = x_enc[:, -1:, :].expand(B, self.pred_len, K).clone()
+        # Safety net: if anything blew up, fall back to persistence
+        bad = torch.isnan(result) | torch.isinf(result)
+        if bad.any():
+            fallback = x[:, -1:, :].expand_as(result)
+            result = torch.where(bad, fallback, result)
 
         return result
 
+    # ------------------------------------------------------------------
+    # Task-specific entry points
+    # ------------------------------------------------------------------
+
+    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        return self._fit_and_forecast(x_enc, self.pred_len)
+
     def imputation(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask):
-        out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-        return out[:, :self.seq_len, :]
+        """
+        Simple imputation: forecast seq_len steps from a zero-history seed.
+        For a proper VAR imputation you'd use the Kalman smoother, but this
+        keeps the interface consistent.
+        """
+        # Use the observed (masked) portion to forecast the full window
+        out = self._fit_and_forecast(x_enc, self.seq_len)
+        # Blend: keep observed values, fill missing with VAR prediction
+        return out * (1 - mask) + x_enc * mask
 
     def anomaly_detection(self, x_enc):
-        out = self.forecast(x_enc, None, None, None)
-        return out[:, :self.seq_len, :]
+        """
+        Return one-step-ahead predictions for the full input window.
+        Anomaly score = |x_t - x_hat_t|.
+        """
+        B, T, K = x_enc.shape
+        p = self.lag_order
+        if T <= p + 1:
+            return x_enc.clone()
+
+        # Fit on the full window, get one-step-ahead fitted values
+        x_norm, seq_mean, seq_std = self._normalize_instance(x_enc)
+        Y, X, coef = self._fit_ols(x_norm)
+
+        fitted = torch.bmm(X, coef)                      # (B, T-p, K)
+        fitted = fitted * seq_std + seq_mean
+
+        # Pad the first p steps with the actual values (no prediction possible)
+        prefix = x_enc[:, :p, :]
+        return torch.cat([prefix, fitted], dim=1)
 
     def classification(self, x_enc, x_mark_enc):
-        raise NotImplementedError("VAR does not support classification")
+        raise NotImplementedError("VAR does not support classification.")
 
+    # ------------------------------------------------------------------
+    # Helpers for anomaly_detection (avoid code duplication)
+    # ------------------------------------------------------------------
+
+    def _normalize_instance(self, x):
+        seq_mean = x.mean(dim=1, keepdim=True)
+        seq_std = x.std(dim=1, keepdim=True) + 1e-8
+        return (x - seq_mean) / seq_std, seq_mean, seq_std
+
+    def _fit_ols(self, x_norm):
+        B, T, K = x_norm.shape
+        p = self.lag_order
+        device = x_norm.device
+        dtype = x_norm.dtype
+
+        Y = x_norm[:, p:, :]
+        Teff = T - p
+        D = 1 + p * K
+
+        X_parts = [torch.ones(B, Teff, 1, device=device, dtype=dtype)]
+        for i in range(1, p + 1):
+            X_parts.append(x_norm[:, p - i: T - i, :])
+        X = torch.cat(X_parts, dim=-1)
+
+        Xt = X.transpose(1, 2)
+        XtX = torch.bmm(Xt, X)
+        XtY = torch.bmm(Xt, Y)
+        eye = torch.eye(D, device=device, dtype=dtype).unsqueeze(0)
+        XtX_reg = XtX + self.ridge * eye
+
+        try:
+            coef = torch.linalg.solve(XtX_reg, XtY)
+        except Exception:
+            XtX_reg = XtX + eye
+            coef = torch.linalg.solve(XtX_reg, XtY)
+
+        coef = torch.clamp(coef, -10.0, 10.0)
+        return Y, X, coef
+
+    # ------------------------------------------------------------------
+    # Standard forward — matches the exp/ framework signature
+    # ------------------------------------------------------------------
+
+    @torch.no_grad()
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        if self.task_name in ['long_term_forecast', 'short_term_forecast']:
-            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            return dec_out[:, -self.pred_len:, :]
+        if self.task_name in ('long_term_forecast', 'short_term_forecast'):
+            return self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
         if self.task_name == 'imputation':
-            dec_out = self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
-            return dec_out
+            return self.imputation(x_enc, x_mark_enc, x_dec, x_mark_dec, mask)
         if self.task_name == 'anomaly_detection':
-            dec_out = self.anomaly_detection(x_enc)
-            return dec_out
+            return self.anomaly_detection(x_enc)
         return None

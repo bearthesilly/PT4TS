@@ -83,6 +83,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.train()
         return total_loss
 
+    # Models that are pure statistical (no backprop needed)
+    STATISTICAL_MODELS = {'VAR', 'ARIMA', 'BVAR'}
+
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
@@ -100,10 +103,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
 
+        is_statistical = self.args.model in self.STATISTICAL_MODELS
+
         if self.args.use_amp:
             scaler = torch.cuda.amp.GradScaler()
+
+        # Statistical models need only 1 epoch (they fit per-sample, no learning)
+        num_epochs = 1 if is_statistical else self.args.train_epochs
         print(self.args.model, 'training start!')
-        for epoch in range(self.args.train_epochs):
+        for epoch in range(num_epochs):
             iter_count = 0
             train_loss = []
 
@@ -152,13 +160,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
+                # Statistical models: no backprop needed
+                if is_statistical:
+                    continue
                 if self.args.use_amp:
                     scaler.scale(loss).backward()
                     scaler.step(model_optim)
                     scaler.update()
                 else:
-                    if self.args.model in ['VAR','ARIMA','BVAR']:
-                        continue
                     loss.backward()
                     model_optim.step()
 
