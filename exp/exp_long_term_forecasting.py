@@ -84,7 +84,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return total_loss
 
     # Models that are pure statistical (no backprop needed)
-    STATISTICAL_MODELS = {'VAR', 'ARIMA', 'BVAR'}
+    STATISTICAL_MODELS = {
+        'VAR',
+        'ARIMA',
+        'BVAR',
+        'GPVAR',
+        'DynamicFactorModel',
+        'StateSpaceModel',
+    }
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
@@ -326,6 +333,29 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         print("Calculating metrics...")
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
+        per_sample_mse = ((preds - trues) ** 2).mean(axis=(1, 2))
+        print(f'Per-sample MSE  | mean: {per_sample_mse.mean():.4f}  '
+              f'median: {np.median(per_sample_mse):.4f}  '
+              f'std: {per_sample_mse.std():.4f}  '
+              f'min: {per_sample_mse.min():.4f}  '
+              f'max: {per_sample_mse.max():.4f}  '
+              f'sample-0: {per_sample_mse[0]:.4f}')
+
+        fig_hist, ax_hist = plt.subplots(1, 1, figsize=(8, 4))
+        ax_hist.hist(per_sample_mse, bins=min(50, len(per_sample_mse) // 2 + 1),
+                     edgecolor='black', alpha=0.75)
+        ax_hist.axvline(per_sample_mse.mean(), color='r', linestyle='--',
+                        label=f'Mean = {per_sample_mse.mean():.4f}')
+        ax_hist.axvline(per_sample_mse[0], color='g', linestyle=':',
+                        label=f'Sample 0 = {per_sample_mse[0]:.4f}')
+        ax_hist.set_xlabel('Per-sample MSE')
+        ax_hist.set_ylabel('Count')
+        ax_hist.set_title(f'{self.args.model} — Per-sample MSE distribution')
+        ax_hist.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(folder_path, 'per_sample_mse_hist.pdf'),
+                    bbox_inches='tight')
+        plt.close(fig_hist)
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
         f.write('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))

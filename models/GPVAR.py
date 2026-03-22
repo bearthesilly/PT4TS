@@ -199,6 +199,7 @@ class Model(nn.Module):
     def classification(self, x_enc, x_mark_enc):
         raise NotImplementedError("GPVAR does not support classification")
 
+    @torch.no_grad()
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)

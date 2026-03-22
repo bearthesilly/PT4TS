@@ -1,5 +1,5 @@
 export CUDA_VISIBLE_DEVICES=0
-model_name=PT_syn_period
+model_name=BVAR
 seed=2021
 
 python -u run.py \

@@ -1,24 +1,19 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from scipy import linalg
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
-class BVAR(nn.Module):
+class Model(nn.Module):
     """
     Bayesian Vector Autoregression with Minnesota Prior
     特别适合小样本场景
     """
 
     def __init__(self, configs):
-        super(BVAR, self).__init__()
+        super(Model, self).__init__()
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
         self.enc_in = configs.enc_in
-        self.lag_order = getattr(configs, 'lag_order', min(8, configs.seq_len // 5))
+        self.lag_order = max(1, int(getattr(configs, 'lag_order', min(8, configs.seq_len // 5))))
         
         # Minnesota 先验超参数
         self.lambda_overall = getattr(configs, 'bvar_lambda', 0.1)  # 整体紧缩
@@ -27,6 +22,8 @@ class BVAR(nn.Module):
         
         self.coefficients = None
         self.sigma = None
+
+        self.dummy_param = nn.Parameter(torch.zeros(1), requires_grad=False)
 
     def _minnesota_prior(self, y, device):
         """
@@ -169,6 +166,7 @@ class BVAR(nn.Module):
     def classification(self, x_enc, x_mark_enc):
         raise NotImplementedError("BVAR does not support classification")
 
+    @torch.no_grad()
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -180,3 +178,7 @@ class BVAR(nn.Module):
             dec_out = self.anomaly_detection(x_enc)
             return dec_out
         return None
+
+
+# Backward-compatible alias
+BVAR = Model

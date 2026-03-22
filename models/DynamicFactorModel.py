@@ -1,12 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from scipy import linalg
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
-class DynamicFactorModel(nn.Module):
+class Model(nn.Module):
     """
     Dynamic Factor Model
     通过低维潜在因子建模高维时间序列
@@ -14,21 +9,23 @@ class DynamicFactorModel(nn.Module):
     """
 
     def __init__(self, configs):
-        super(DynamicFactorModel, self).__init__()
+        super(Model, self).__init__()
         self.task_name = configs.task_name
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
         self.enc_in = configs.enc_in
         
         # 因子数量（通常远小于变量数）
-        self.n_factors = getattr(configs, 'n_factors', max(1, self.enc_in // 3))
-        self.factor_lag = getattr(configs, 'factor_lag', min(4, configs.seq_len // 10))
+        self.n_factors = int(getattr(configs, 'n_factors', max(1, self.enc_in // 3)))
+        self.factor_lag = max(1, int(getattr(configs, 'factor_lag', min(4, configs.seq_len // 10))))
         
         # 模型参数
         self.Lambda = None  # 因子载荷矩阵 (K, r)
         self.Phi = None     # 因子动态系数 (r, r * factor_lag)
         self.Sigma_eps = None  # 观测噪声方差
         self.Sigma_eta = None  # 因子噪声方差
+
+        self.dummy_param = nn.Parameter(torch.zeros(1), requires_grad=False)
 
     def _extract_factors_pca(self, y):
         """
@@ -156,6 +153,7 @@ class DynamicFactorModel(nn.Module):
     def classification(self, x_enc, x_mark_enc):
         raise NotImplementedError("DynamicFactorModel does not support classification")
 
+    @torch.no_grad()
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
@@ -167,3 +165,7 @@ class DynamicFactorModel(nn.Module):
             dec_out = self.anomaly_detection(x_enc)
             return dec_out
         return None
+
+
+# Backward-compatible alias
+DynamicFactorModel = Model

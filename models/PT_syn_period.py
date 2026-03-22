@@ -212,7 +212,7 @@ class PtHeadSelection(nn.Module):
             
         # Stack [enc_in, L, L] Tensor
         # Scaling factor is a very important parameter to adjust
-        bias_block = torch.stack(bias_matrix_list, dim=0) * 7.0  # scaling factor, remember to use float
+        bias_block = torch.stack(bias_matrix_list, dim=0) * 5.0  # scaling factor, remember to use float
         return bias_block
 
 
