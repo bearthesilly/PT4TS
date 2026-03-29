@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls models/PT*.py)",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''models/PT_syn_channel_group.py'', doraise=True\\); print\\(''PT_syn_channel_group.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''models/PT_syn_sparse_topo.py'', doraise=True\\); print\\(''PT_syn_sparse_topo.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''models/PT_syn_temporal_decay.py'', doraise=True\\); print\\(''PT_syn_temporal_decay.py OK''\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''toy_experiment_related/syn_channel_group_generation.py'', doraise=True\\); py_compile.compile\\(''toy_experiment_related/syn_sparse_topology_generation.py'', doraise=True\\); py_compile.compile\\(''toy_experiment_related/syn_temporal_locality_generation.py'', doraise=True\\); print\\(''All data generators OK''\\)\")"
+    ]
+  }
+}

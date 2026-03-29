@@ -38,13 +38,13 @@ class TemporalLocalityGenerator:
         """Generate sine wave that switches frequency at random points."""
         x = np.zeros(length)
         t = np.arange(length, dtype=np.float64)
-        freqs = self.rng.choice([12, 30], size=10)
+        freqs = self.rng.choice([8, 48], size=10)  # wider frequency gap for stronger regime contrast
         seg_start = 0
         seg_idx = 0
         phase = self.rng.uniform(0, 2 * np.pi)
 
         while seg_start < length:
-            seg_len = self.rng.randint(30, 50)
+            seg_len = self.rng.randint(15, 30)  # shorter segments = more switches per window
             seg_end = min(seg_start + seg_len, length)
             period = freqs[seg_idx % len(freqs)]
             x[seg_start:seg_end] = np.sin(
@@ -58,13 +58,13 @@ class TemporalLocalityGenerator:
     def _regime_switching_linear(self, length):
         """Generate piecewise linear with alternating steep/flat slopes."""
         x = np.zeros(length)
-        slopes = [0.08, -0.08, 0.02, -0.02]
+        slopes = [0.15, -0.15, 0.03, -0.03]  # larger slope contrast
         seg_start = 0
         val = self.rng.uniform(-1, 1)
         seg_idx = 0
 
         while seg_start < length:
-            seg_len = self.rng.randint(30, 50)
+            seg_len = self.rng.randint(15, 30)  # shorter segments
             slope = slopes[seg_idx % len(slopes)]
             for s in range(seg_len):
                 if seg_start + s >= length:

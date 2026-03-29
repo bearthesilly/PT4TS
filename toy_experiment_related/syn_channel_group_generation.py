@@ -48,7 +48,7 @@ class ChannelGroupGenerator:
                       + drift_slope * t)
 
             for ch in group:
-                noise = self.rng.normal(0, 1.5, L)
+                noise = self.rng.normal(0, 0.5, L)
                 channels[:, ch] = latent + noise
 
         return channels.astype(np.float32)

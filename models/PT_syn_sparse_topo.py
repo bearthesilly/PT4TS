@@ -146,16 +146,37 @@ class PtHeadSelection(nn.Module):
         self.ternary_factor_v_channel = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
         self.dropout = nn.Dropout(config.dropout_prob_h)
         self._init_ternary()
-    
+
+        # Sparse topology prior: soft multiplicative modulation (NOT hard -inf mask)
+        # adjacent = 1.0, non-adjacent = cross_beta (small positive value)
+        adjacency = getattr(args, 'adjacency',
+                            [(i, i + 1) for i in range(self.enc_in - 1)])
+        cross_beta = getattr(args, 'cross_beta', 0.1)
+        _ap = self._build_adjacency_prior(self.enc_in, adjacency, cross_beta)
+        self.register_buffer('channel_prior', _ap.view(1, 1, self.enc_in, self.enc_in))
+        self.seq_len = args.seq_len
+        self.patch_len = args.patch_len
+        self.patch_num = self.seq_len // self.patch_len
+
+    @staticmethod
+    def _build_adjacency_prior(enc_in, adjacency, cross_beta=0.1):
+        """Build [enc_in, enc_in] MULTIPLICATIVE prior: adjacent 1.0, non-adjacent cross_beta."""
+        prior = torch.full((enc_in, enc_in), cross_beta, dtype=torch.float32)
+        for i in range(enc_in):
+            prior[i, i] = 1.0  # self
+        for (i, j) in adjacency:
+            prior[i, j] = 1.0
+            prior[j, i] = 1.0
+        return prior
+
     def _init_ternary(self):
         nn.init.normal_(self.ternary_factor_u_channel, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_v_channel, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_u_time, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_v_time, mean=0.0, std=self.config.ternary_initializer_range)
 
-    def calculate_messageF(self, qz, dependency_mask, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v):
-        # Here the seq_len is actually the number of patch
-        bsz, seq_len, _ = qz.size() # this seq_len actually is enc_in, the number of channels of the time series
+    def calculate_messageF(self, qz, dependency_mask, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v, dimension=None):
+        bsz, seq_len, _ = qz.size()
         qz_u = nn.functional.linear(qz, ternary_factor_u) * self.config.ternary_factor_scaling
         qz_v = nn.functional.linear(qz, ternary_factor_v) * self.config.ternary_factor_scaling
         qz_u = qz_u.view(bsz, seq_len, self.num_channels, self.ternary_rank).transpose(1, 2)
@@ -166,6 +187,11 @@ class PtHeadSelection(nn.Module):
         qz_u = rope_applier.apply(qz_u)
         qz_v = rope_applier.apply(qz_v)
         message_F = torch.matmul(qz_u, qz_v.transpose(2, 3))
+        # Sparse topology prior: soft multiplicative modulation on channel-axis logits
+        if dimension == 'channel':
+            batch_size = message_F.shape[0] // self.patch_num
+            prior_expanded = self.channel_prior.repeat(batch_size * self.patch_num, 1, 1, 1).to(message_F.device)
+            message_F = message_F * prior_expanded.to(message_F.dtype)
         if message_F.size() != (bsz, self.num_channels, seq_len, seq_len):
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_channels, seq_len, seq_len)}, but is"
@@ -180,10 +206,14 @@ class PtHeadSelection(nn.Module):
             message_F = message_F + dependency_mask # need mask diag
         return message_F, qz_u, qz_v, qz_uo, bsz, seq_len, qz_u.dtype
 
-    def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v):
-        # torch.cuda.empty_cache()  
+    def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v, dimension=None):
         cos, sin = position_embeddings
         rope_applier = RopeApplier(cos, sin, position_ids)
+        # Sparse topology prior: symmetric multiplicative modulation on messageG
+        if dimension == 'channel':
+            batch_size = qh.shape[0] // self.patch_num
+            prior_expanded = self.channel_prior.repeat(batch_size * self.patch_num, 1, 1, 1).to(qh.device)
+            qh = qh * prior_expanded.to(qh.dtype)
         qh_v1 = torch.matmul(qh, qz_v)
         # raise RuntimeError(qh.shape, qz_uo.shape) -> [4, 12, 1024, 1024], [4, 12, 1024, 64]
         qh_v2 = torch.matmul(qh.transpose(2, 3), qz_uo)
@@ -227,18 +257,19 @@ class PtHeadSelection(nn.Module):
             position_ids=position_ids_time,
             position_embeddings=position_embeddings_time,
             ternary_factor_u=self.ternary_factor_u_time,
-            ternary_factor_v=self.ternary_factor_v_time
+            ternary_factor_v=self.ternary_factor_v_time,
+            dimension='time'
         )
         qz = qz.view(bs, num_channel, length, -1)
         qz = qz.transpose(1,2).reshape(bs*length, num_channel, -1)
-        # raise RuntimeError(dependency_mask_channel.shape, dependency_mask_time.shape)
         message_F_channel, qz_u_channel, qz_v_channel, qz_uo_channel, bsz_channel, seq_len_channel, type_channel = self.calculate_messageF(
             qz,
             dependency_mask=dependency_mask_channel,
             position_ids=position_ids_channel,
             position_embeddings=position_embeddings_channel,
             ternary_factor_u=self.ternary_factor_u_channel,
-            ternary_factor_v=self.ternary_factor_v_channel
+            ternary_factor_v=self.ternary_factor_v_channel,
+            dimension='channel'
         )
         qz =qz.view(bs,length, num_channel,-1).transpose(1,2)
         # raise RuntimeError(message_F_time.shape, message_F_channel.shape)
@@ -269,7 +300,8 @@ class PtHeadSelection(nn.Module):
             position_ids=position_ids_channel,
             position_embeddings=position_embeddings_channel,
             ternary_factor_u=self.ternary_factor_u_channel,
-            ternary_factor_v=self.ternary_factor_v_channel
+            ternary_factor_v=self.ternary_factor_v_channel,
+            dimension='channel'
         ).reshape(bs, num_channel, length, -1)
         message_G_time = self.calculate_messageG(
             qh=qh_time,
@@ -280,7 +312,8 @@ class PtHeadSelection(nn.Module):
             position_ids=position_ids_time,
             position_embeddings=position_embeddings_time,
             ternary_factor_u=self.ternary_factor_u_time,
-            ternary_factor_v=self.ternary_factor_v_time
+            ternary_factor_v=self.ternary_factor_v_time,
+            dimension='time'
         ).reshape(bs, num_channel, length, -1)
         return message_G_time, message_G_channel, qh_time_output, qh_channel_output
 
@@ -403,12 +436,8 @@ class PtModel(nn.Module):
         # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
         
-        # Sparse topology prior: only allow channel message passing along known edges
-        # Default: chain graph ch0-ch1-ch2-...-ch(enc_in-1)
-        self.adjacency = getattr(args, 'adjacency',
-                                 [(i, i + 1) for i in range(self.enc_in - 1)])
-        self.channel_adjacency_bias = self._build_adjacency_bias(
-            self.enc_in, self.adjacency)
+        # Sparse topology prior is now handled inside PtHeadSelection
+        # (soft multiplicative modulation instead of hard -inf mask)
 
         # Currrently I embed self.patch_len points -> patch_len
         self.unary_factors = nn.Sequential(
@@ -416,21 +445,6 @@ class PtModel(nn.Module):
             nn.GELU(),
 			nn.Linear(self.dim_z, self.dim_z)
 		)
-
-    @staticmethod
-    def _build_adjacency_bias(enc_in, adjacency):
-        """
-        Build [enc_in, enc_in] additive bias from a sparse adjacency list.
-        Adjacent (including self-loop): 0   |   Non-adjacent: -inf
-        """
-        neg_inf = torch.finfo(torch.float32).min
-        bias = torch.full((enc_in, enc_in), neg_inf, dtype=torch.float32)
-        for i in range(enc_in):
-            bias[i, i] = 0.0
-        for (i, j) in adjacency:
-            bias[i, j] = 0.0
-            bias[j, i] = 0.0
-        return bias
 
     def forward(
         self,
@@ -474,10 +488,9 @@ class PtModel(nn.Module):
                 0, enc_in, dtype=torch.long, device=device
             )
             position_ids_channel = position_ids_channel.unsqueeze(0)
-        # update dependency mask (inject adjacency bias for channel axis)
+        # update dependency mask (no prior injection here; prior is in PtHeadSelection)
         dependency_mask_channel = self._update_dependency_mask(
-            dependency_mask_channel, enc_in, output_dependencies, unary_type,
-            prior_bias_2d=self.channel_adjacency_bias
+            dependency_mask_channel, enc_in, output_dependencies, unary_type
         )
         dependency_mask_time = self._update_dependency_mask(
             dependency_mask_time, seq_len, output_dependencies, unary_type
@@ -534,19 +547,13 @@ class PtModel(nn.Module):
 
     
     def _update_dependency_mask(
-        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type,
-        prior_bias_2d: Optional[torch.Tensor] = None
+        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type
     ) -> torch.Tensor:
 
         attn_mask_converter = AttentionMaskConverter(is_causal=False)
         dependency_mask = attn_mask_converter.to_4d(
             dependency_mask, seq_length, dtype = type
         )
-
-        # inject prior bias (e.g. adjacency -inf mask) if provided
-        if prior_bias_2d is not None:
-            gb = prior_bias_2d.to(device=dependency_mask.device, dtype=dependency_mask.dtype)
-            dependency_mask = dependency_mask + gb.view(1, 1, seq_length, seq_length)
 
         # mask diagonals
         diag_mask = torch.eye(seq_length, dtype=dependency_mask.dtype, device=dependency_mask.device).unsqueeze(0).unsqueeze(0)

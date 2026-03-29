@@ -153,19 +153,20 @@ class PtHeadSelection(nn.Module):
         self.patch_len = args.patch_len
         self.patch_num = self.seq_len // self.patch_len
         # [1, 1, L, L] shared across all channels and heads
-        self.decay_prior = self.decay_bias_matrix().view(1, 1, self.patch_num, self.patch_num)
+        # MULTIPLICATIVE exp-decay prior: exp(-alpha * |i - j|), values in (0, 1]
+        self.decay_prior = self._build_decay_prior().view(1, 1, self.patch_num, self.patch_num)
 
-    def decay_bias_matrix(self, alpha=0.15):
+    def _build_decay_prior(self, alpha=0.15):
         """
-        Build [L, L] ADDITIVE log-decay bias:  -alpha * |i - j|
-        where L = patch_num.  Added to temporal message_F logits before
-        the joint softmax, so distant patches get exponentially less
-        probability mass.
+        Build [L, L] MULTIPLICATIVE exp-decay prior: exp(-alpha * |i - j|)
+        where L = patch_num. Multiplied onto temporal messageF and messageG
+        so that distant patches get exponentially less influence.
+        Values range from exp(0)=1.0 (same position) to exp(-alpha*(L-1)) (farthest).
         """
         device = self.ternary_factor_u_time.device
         idx = torch.arange(self.patch_num, device=device, dtype=torch.float32)
         dist = torch.abs(idx.unsqueeze(1) - idx.unsqueeze(0))
-        return -alpha * dist
+        return torch.exp(-alpha * dist)
 
     def _init_ternary(self):
         nn.init.normal_(self.ternary_factor_u_channel, mean=0.0, std=self.config.ternary_initializer_range)
@@ -185,10 +186,10 @@ class PtHeadSelection(nn.Module):
         qz_u = rope_applier.apply(qz_u)
         qz_v = rope_applier.apply(qz_v)
         message_F = torch.matmul(qz_u, qz_v.transpose(2, 3))
-        # Temporal decay prior: additive log-decay on temporal logits
+        # Temporal decay prior: MULTIPLICATIVE exp-decay on temporal logits
         if dimension == 'time':
-            decay_bias = self.decay_prior.to(device=message_F.device, dtype=message_F.dtype)
-            message_F = message_F + decay_bias
+            decay_mult = self.decay_prior.to(device=message_F.device, dtype=message_F.dtype)
+            message_F = message_F * decay_mult
         if message_F.size() != (bsz, self.num_channels, seq_len, seq_len):
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_channels, seq_len, seq_len)}, but is"
@@ -206,6 +207,10 @@ class PtHeadSelection(nn.Module):
     def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v, dimension: str = None):
         cos, sin = position_embeddings
         rope_applier = RopeApplier(cos, sin, position_ids)
+        # Temporal decay prior: SYMMETRIC multiplicative modulation on messageG
+        if dimension == 'time':
+            decay_mult = self.decay_prior.to(device=qh.device, dtype=qh.dtype)
+            qh = qh * decay_mult
         qh_v1 = torch.matmul(qh, qz_v)
         # raise RuntimeError(qh.shape, qz_uo.shape) -> [4, 12, 1024, 1024], [4, 12, 1024, 64]
         qh_v2 = torch.matmul(qh.transpose(2, 3), qz_uo)

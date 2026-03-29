@@ -61,7 +61,7 @@ class SparseTopologyGenerator:
                 participating_edges.append(c)
 
             signal = np.mean(edge_latents[:, participating_edges], axis=1)
-            noise = self.rng.normal(0, 1.5, L)
+            noise = self.rng.normal(0, 0.5, L)
             channels[:, c] = signal + noise
 
         return channels.astype(np.float32)
