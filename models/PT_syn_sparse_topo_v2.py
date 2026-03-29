@@ -305,27 +305,27 @@ class PtTopicModeling(nn.Module):
 
 
 class PtTopologyMessage(nn.Module):
-    """Sparse Topology Prior: explicit neighbor-aggregation message along known graph edges.
+    """Sparse Topology Prior: parameter-free neighbor-aggregation message.
 
-    For each edge (i, j) in the adjacency list, pass information bidirectionally
-    through a learnable projection matrix.
+    For each channel, compute the average Z of its graph-neighbors and send
+    it directly (with a large fixed scaling) as an additional message.
+    No learnable projection — the prior IS the structural knowledge of
+    which channels are adjacent.
     """
+    SCALING = 200.0  # match the magnitude used by the successful PtLagPrior
+
     def __init__(self, args):
         super().__init__()
-        self.dim_z = args.d_model
         self.enc_in = args.enc_in
         # Default: chain graph for 8-channel synthetic dataset
         self.adjacency = getattr(args, 'adjacency',
                                  [(i, i + 1) for i in range(self.enc_in - 1)])
-        # One projection matrix per edge
-        self.edge_W = nn.ParameterList([
-            nn.Parameter(torch.empty(self.dim_z, self.dim_z)) for _ in self.adjacency
-        ])
-        self._init_params()
-
-    def _init_params(self):
-        for w in self.edge_W:
-            nn.init.normal_(w, mean=0.0, std=0.02)
+        # Pre-compute neighbor lists for efficiency
+        self.neighbors = [[] for _ in range(self.enc_in)]
+        for (i, j) in self.adjacency:
+            if i < self.enc_in and j < self.enc_in:
+                self.neighbors[i].append(j)
+                self.neighbors[j].append(i)
 
     def forward(self, qz_norm: torch.Tensor) -> torch.Tensor:
         """Compute topology messages along known edges.
@@ -335,13 +335,15 @@ class PtTopologyMessage(nn.Module):
             topo_message: same shape, to be added into qz update.
         """
         msg = torch.zeros_like(qz_norm)
-        for e_idx, (i, j) in enumerate(self.adjacency):
-            if i >= qz_norm.shape[1] or j >= qz_norm.shape[1]:
+        for ch, nbrs in enumerate(self.neighbors):
+            if not nbrs or ch >= qz_norm.shape[1]:
                 continue
-            W = self.edge_W[e_idx]
-            # Bidirectional message: i -> j and j -> i
-            msg[:, j] = msg[:, j] + torch.matmul(qz_norm[:, i], W)
-            msg[:, i] = msg[:, i] + torch.matmul(qz_norm[:, j], W.t())
+            valid_nbrs = [n for n in nbrs if n < qz_norm.shape[1]]
+            if not valid_nbrs:
+                continue
+            # Average of neighbors (parameter-free)
+            nbr_avg = qz_norm[:, valid_nbrs].mean(dim=1)  # [bs, patch_num, dim_z]
+            msg[:, ch] = self.SCALING * nbr_avg
         return msg
 
 

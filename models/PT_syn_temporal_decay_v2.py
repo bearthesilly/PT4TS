@@ -154,7 +154,7 @@ class PtHeadSelection(nn.Module):
         self.seq_len = args.seq_len
         self.patch_len = args.patch_len
         self.patch_num = self.seq_len // self.patch_len
-        self.decay_alpha = getattr(args, 'decay_alpha', 0.1)
+        self.decay_alpha = getattr(args, 'decay_alpha', 0.15)
         _decay = self._build_decay_prior()
         self.register_buffer('decay_prior', _decay.view(1, 1, self.patch_num, self.patch_num))
 
@@ -448,7 +448,7 @@ class PtModel(nn.Module):
 		)
 
         # Temporal decay prior: recency weighting for unary potentials
-        self.decay_alpha = getattr(args, 'decay_alpha', 0.1)
+        self.decay_alpha = getattr(args, 'decay_alpha', 0.15)
 
 
     def forward(

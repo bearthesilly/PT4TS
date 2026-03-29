@@ -42,35 +42,37 @@ class TemporalDecayGeneratorV2:
         t = np.arange(L, dtype=np.float64)
         channels = np.zeros((L, self.num_channels))
 
-        # Random changepoint within input window
-        tau = self.rng.randint(20, 77)  # [20, 76]
+        # LATE changepoint: tau in [70, 90] — only last few input patches
+        # show the new pattern. Most of the input window is the OLD pattern.
+        # This forces the model to heavily weight recent patches.
+        tau = self.rng.randint(70, 91)  # [70, 90]
 
         # --- Group A (ch0-3): Sine regime switch ---
+        # Before tau: slow, coherent sine (STRONG pattern that fills most of window)
+        # After tau: fast sine (DIFFERENT pattern, only visible in last ~10-26 steps)
         phase_a = self.rng.uniform(0, 2 * np.pi)
         period_before = 48
         period_after = 12
         for c in range(4):
             ch_phase = phase_a + self.rng.uniform(-0.3, 0.3)
             signal = np.zeros(L)
-            # Before changepoint: slow sine
             signal[:tau] = np.sin(2 * np.pi * t[:tau] / period_before + ch_phase)
-            # After changepoint: fast sine (continuous phase)
             phase_at_tau = 2 * np.pi * tau / period_before + ch_phase
             signal[tau:] = np.sin(2 * np.pi * (t[tau:] - tau) / period_after + phase_at_tau)
-            channels[:, c] = signal + self.rng.normal(0, 0.2, L)
+            channels[:, c] = signal + self.rng.normal(0, 0.5, L)  # heavier noise
 
         # --- Group B (ch4-6): Linear regime switch ---
+        # Before tau: positive slope (dominates input window)
+        # After tau: NEGATIVE slope (reversal, only in last few steps)
         for c in range(4, 7):
             offset = self.rng.uniform(-1, 1)
-            slope_before = 0.12
-            slope_after = -0.12
+            slope_before = 0.15
+            slope_after = -0.15
             signal = np.zeros(L)
-            # Before changepoint
             signal[:tau] = offset + slope_before * (t[:tau] - tau)
-            # After changepoint (continuous at tau)
-            val_at_tau = offset  # slope_before * 0 + offset
+            val_at_tau = offset
             signal[tau:] = val_at_tau + slope_after * (t[tau:] - tau)
-            channels[:, c] = signal + self.rng.normal(0, 0.2, L)
+            channels[:, c] = signal + self.rng.normal(0, 0.5, L)  # heavier noise
 
         # --- Group C (ch7-9): Stationary control ---
         stationary_periods = [24, 32, 20]
@@ -78,7 +80,7 @@ class TemporalDecayGeneratorV2:
             phase = self.rng.uniform(0, 2 * np.pi)
             channels[:, c] = np.sin(
                 2 * np.pi * t / stationary_periods[i] + phase)
-            channels[:, c] += self.rng.normal(0, 0.2, L)
+            channels[:, c] += self.rng.normal(0, 0.3, L)
 
         return channels.astype(np.float32)
 
