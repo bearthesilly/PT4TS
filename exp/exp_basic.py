@@ -4,10 +4,11 @@ from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer,
     Informer, LightTS, Reformer, ETSformer, Pyraformer, PatchTST, MICN, Crossformer, FiLM, iTransformer, \
     Koopa, TiDE, FreTS, TimeMixer, TSMixer, SegRNN, MambaSimple, TemporalFusionTransformer, SCINet, PAttn, TimeXer, \
     WPMixer, MultiPatchFormer, PT, PT_forecast, PT_imputation, PT_anomaly, PT_implicit_HMM, PT_explicit_HMM, PT_explicit_HMM_without_G, \
-    PT_forecast_v1, PT_forecast_v2, PT_forecast_v3, PT_forecast_v4, PT_forecast_v5, PT_forecast_v6, Transformer_ablation, PT_forecast_v7, PT_forecast_v8, \
-    PT_forecast_v9, PT_forecast_v10, MLP, PT_forecast_v11, Transformer_vanilla, Transformer_exp, PT_forecast_v12, TSFusion, \
-    Transformer_vanilla_implicit, Transformer_vanilla_explicit, PT_forecast_v13, PT_forecast_v14, PT_forecast_v15, PT_forecast_v16, \
-    PT_forecast_v17, PT_syn_period, PT_syn_period_2, PT_syn_trend, PT_syn_lag, Transformer_trend, PatchTST_trend, StateSpaceModel, GPVAR, VAR, BVAR, DynamicFactorModel
+    PT_forecast_v1, PT_forecast_v2, PT_forecast_v3, PT_forecast_v4, PT_forecast_v5, PT_forecast_v6, PT_forecast_v7, PT_forecast_v8, \
+    PT_forecast_v9, PT_forecast_v10, MLP, PT_forecast_v11, PT_forecast_v12, TSFusion, \
+    PT_forecast_v13, PT_forecast_v14, PT_forecast_v15, PT_forecast_v16, \
+    PT_forecast_v17, PT_syn_period, PT_syn_period_2, PT_syn_trend, PT_syn_lag, PatchTST_trend, StateSpaceModel, GPVAR, VAR, BVAR, DynamicFactorModel, \
+    PT_syn_sparse_topo, PT_syn_channel_group, PT_syn_temporal_decay, PT_ETT_prior
 
 class Exp_Basic(object):
     def __init__(self, args):
@@ -55,19 +56,14 @@ class Exp_Basic(object):
             'PT_forecast_v4': PT_forecast_v4,
             'PT_forecast_v5': PT_forecast_v5,
             'PT_forecast_v6': PT_forecast_v6,
-            'Transformer_ablation': Transformer_ablation,
             'PT_forecast_v7': PT_forecast_v7,
             'PT_forecast_v8': PT_forecast_v8,
             'PT_forecast_v9': PT_forecast_v9,
             'PT_forecast_v10': PT_forecast_v10,
             'PT_forecast_v11': PT_forecast_v11,
             'MLP': MLP,
-            'Transformer_vanilla': Transformer_vanilla,
-            'Transformer_exp': Transformer_exp,
             'PT_forecast_v12': PT_forecast_v12,
             'TSFusion': TSFusion,
-            'Transformer_vanilla_implicit': Transformer_vanilla_implicit,
-            'Transformer_vanilla_explicit': Transformer_vanilla_explicit,
             'PT_forecast_v13': PT_forecast_v13,
             'PT_forecast_v14': PT_forecast_v14,
             'PT_forecast_v15': PT_forecast_v15,
@@ -77,13 +73,16 @@ class Exp_Basic(object):
             'PT_syn_period_2': PT_syn_period_2,
             'PT_syn_trend': PT_syn_trend,
             'PT_syn_lag': PT_syn_lag,
-            'Transformer_trend': Transformer_trend,
             'PatchTST_trend': PatchTST_trend,
             'StateSpaceModel': StateSpaceModel,
             'GPVAR': GPVAR,
             'VAR': VAR,
             'BVAR': BVAR,
-            'DynamicFactorModel': DynamicFactorModel
+            'DynamicFactorModel': DynamicFactorModel,
+            'PT_syn_sparse_topo': PT_syn_sparse_topo,
+            'PT_syn_channel_group': PT_syn_channel_group,
+            'PT_syn_temporal_decay': PT_syn_temporal_decay,
+            'PT_ETT_prior': PT_ETT_prior,
         }
         if args.model == 'Mamba':
             print('Please make sure you have successfully installed mamba_ssm')

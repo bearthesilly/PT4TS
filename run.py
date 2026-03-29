@@ -111,6 +111,21 @@ if __name__ == '__main__':
     parser.add_argument('--use_dtw', type=bool, default=False,
                         help='the controller of using dtw metric (dtw is time consuming, not suggested unless necessary)')
 
+    # Small-sample training
+    parser.add_argument('--percent', type=int, default=100,
+                        help='Percentage of training data to use (1-100). Default 100 = full training set.')
+
+    # Domain prior knobs (used by PT_ETT_prior and similar models)
+    parser.add_argument('--decay_alpha', type=float, default=0.0,
+                        help='Temporal decay strength: -alpha*|i-j| additive bias. 0 = disabled.')
+    parser.add_argument('--period_len', type=int, default=0,
+                        help='Periodicity in original timesteps (e.g. 24 for hourly daily cycle). 0 = disabled.')
+    parser.add_argument('--period_beta', type=float, default=0.5,
+                        help='Periodicity cosine boost intensity. Only effective when period_len > 0.')
+    parser.add_argument('--channel_group_str', type=str, default='',
+                        help='Channel grouping prior. Format: "0,1|2,3|4,5|6" where | separates groups. '
+                             'Empty = no channel grouping.')
+
     # Augmentation
     parser.add_argument('--augmentation_ratio', type=int, default=0, help="How many times to augment")
     # parser.add_argument('--seed', type=int, default=2, help="Randomization seed")

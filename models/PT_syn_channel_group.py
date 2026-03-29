@@ -1,17 +1,14 @@
 '''
-This model is called 'PT_hybrid', which is the backbone of ST-PT framework
-PT_channel has rather satisfying performance, but is lack of novelty
-Inspired by Crossformer in Time Series, we design 'PT_hybrid'
-For more information about this model, please refer to the model architecture illustrated
-in the epan folder
+ST-PT + Channel Grouping Prior  (Edge Removal on channel axis, block-diagonal)
 
-There will be a lot of stuff to tune:
-dim_z, dim_g, number of head, the design of unary potential and decoder
-number of iteration, learning rate, binary_factor_scaling, ternary_factor_scaling
+Based on PT_forecast_v15 (backbone).
+Prior: Given a known partition of channels into groups, we remove all
+cross-group ternary factor edges by adding -inf to their entries in the
+channel dependency mask.  This factorizes the channel-axis CRF into
+independent sub-CRFs, one per group.
 
-This code might be unfriendly w.r.t. memory management, and may have . 
-If you have any question or suggestion, please drop me a message any time! 
-
+Graph primitive:  Edge Removal  /  Factor Differentiation
+Injection point:  dependency_mask_channel  (additive bias before softmax)
 '''
 import math
 import warnings
@@ -52,9 +49,6 @@ class Config:
     dropout_prob_h: float = 0.0
     regularize_z: float = 1
     regularize_g: float = 1.0
-    # Lag prior (A delayed by tau affects B)
-    lag_tau_steps: int = 20
-    lag_prior_scaling: float = 1.0
 
     def to_dict(self):
         return asdict(self)
@@ -264,8 +258,8 @@ class PtHeadSelection(nn.Module):
         qh_time_output = qh_time_combined.permute(0, 2, 1, 3, 4)
         qh_time = qh_time_output.reshape(bs * num_channel, self.num_channels, length, length).to(type_time)
         # [bs, num_heads, num_channel, length, num_channel] -> [bs, length, num_heads, num_channel, num_channel] -> [bs*length, num_heads, num_channel, num_channel]
-        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)
-        qh_channel = qh_channel_output.permute(0, 3, 1, 2, 4).reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
+        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)  # [bs, length, heads, num_channel, num_channel]
+        qh_channel = qh_channel_output.reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
     
         message_G_channel = self.calculate_messageG(
             qh=qh_channel,
@@ -313,87 +307,6 @@ class PtTopicModeling(nn.Module):
         message_G = qg @ self.binary_factor * self.config.binary_factor_scaling
         return message_G
 
-
-class PtLagPrior(nn.Module):
-    """Lagged cross-channel prior: channel A at time t influences channel B at time t+tau.
-
-    Implemented as a pairwise potential which yields an extra mean-field message:
-        m_{A->B, tau}(Z_{B,j}) = lambda * W^T q(Z_{A,i})
-    where j corresponds to i shifted by tau (in patch units, with optional linear interpolation).
-    """
-    def __init__(self, args, relations=None, tau_steps=None):
-        super().__init__()
-        self.dim_z = args.d_model
-        self.enc_in = args.enc_in
-        self.patch_len = args.patch_len
-
-        # tau in raw time steps (not patches)
-        self.tau_steps = int(tau_steps) if tau_steps is not None else 8
-
-        # NEW default relations for the new synthetic lag dataset (enc_in=6):
-        # Ch0 -> Ch1, Ch2 -> Ch3, Ch4 -> Ch5
-        if relations is None:
-            relations = [(0, 1), (2, 3), (4, 5)]
-        self.relations = relations  # <-- 仍然显式保留
-
-        # scaling strength (avoid undefined `config`)
-        self.lag_prior_scaling = float(getattr(args, "lag_prior_scaling", 1.0))
-
-        # One weight matrix per relation (bilinear potential)
-        self.W = nn.ParameterList([
-            nn.Parameter(torch.empty(self.dim_z, self.dim_z)) for _ in self.relations
-        ])
-        self.lam = torch.ones(len(self.relations))  # strengths
-        self._init_params()
-
-    def _init_params(self):
-        for w in self.W:
-            nn.init.normal_(w, mean=0.0, std=0.02)
-
-    def forward(self, qz_norm: torch.Tensor) -> torch.Tensor:
-        """Compute lag prior messages in the logit space.
-
-        Args:
-            qz_norm: normalized qz, shape [bs, enc_in, patch_num, dim_z]
-        Returns:
-            lag_message: same shape as qz_norm, to be added into qz logits.
-        """
-        bs, enc_in, P, dim_z = qz_norm.shape
-        device = qz_norm.device
-        lag_message = torch.zeros((bs, enc_in, P, dim_z), device=device, dtype=qz_norm.dtype)
-
-        delta = self.tau_steps / float(self.patch_len)  # may be fractional
-
-        # Precompute mapping from src patch index -> (tgt_lo, tgt_hi, w_lo, w_hi)
-        src_idx = torch.arange(P, device=device, dtype=torch.float32)
-        tgt = src_idx + delta
-        lo = torch.floor(tgt).to(torch.long)          # [P]
-        hi = lo + 1                                  # [P]
-        w_hi = (tgt - lo.to(torch.float32)).to(qz_norm.dtype)  # [P]
-        w_lo = (1.0 - w_hi).to(qz_norm.dtype)                 # [P]
-
-        for r_idx, ((src_c, tgt_c), W_r) in enumerate(zip(self.relations, self.W)):
-            if src_c >= enc_in or tgt_c >= enc_in:
-                continue
-
-            # proj: [bs, P, dim_z]
-            proj = torch.matmul(qz_norm[:, src_c], W_r)
-            # There is a scaling factor here. 
-            strength = self.lam[r_idx] * 200.0
-
-            # Scatter-add with linear interpolation (same logic as your original, minimal change)
-            for p in range(P):
-                lo_p = lo[p]
-                hi_p = hi[p]
-                if 0 <= lo_p < P:
-                    lag_message[:, tgt_c, lo_p] = lag_message[:, tgt_c, lo_p] + strength * w_lo[p] * proj[:, p]
-                if 0 <= hi_p < P:
-                    lag_message[:, tgt_c, hi_p] = lag_message[:, tgt_c, hi_p] + strength * w_hi[p] * proj[:, p]
-
-        return lag_message
-
-
-
 class PtEncoderIterator(nn.Module):
     def __init__(self, args):
         super().__init__()
@@ -401,7 +314,6 @@ class PtEncoderIterator(nn.Module):
         self.dim_z = args.d_model
         self.head_selection = PtHeadSelection(args)
         self.topic_modeling = PtTopicModeling(args)
-        self.lag_prior = PtLagPrior(args)
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
     
     def forward(
@@ -429,8 +341,6 @@ class PtEncoderIterator(nn.Module):
         old_qz = qz
         qz = self.norm(qz)
         # head selection
-        # lagged cross-channel prior message (in logit space)
-        m_lag = self.lag_prior(qz)
         m_t, m_c, qh_t, qh_c = self.head_selection(
             qz=qz,
             dependency_mask_channel=dependency_mask_channel,
@@ -448,7 +358,7 @@ class PtEncoderIterator(nn.Module):
         # m_t: message along the dimension of time stamp
         # m_c: message along the dimension of channel
         # m_g: message from global topic modeling
-        qz = (m_t + m_c + m_g + m_lag + unary_potentials) / self.config.regularize_z
+        qz = (m_t + m_c + m_g + unary_potentials) / self.config.regularize_z
         # damping
         qz = (qz + old_qz) * .5
 
@@ -494,9 +404,12 @@ class PtModel(nn.Module):
         # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
         
-        # Currently, no dropout is deployed
-        # if args.dropout != None:
-        #     self.dropout = nn.Dropout(args.dropout)
+        # Channel grouping prior: block cross-group message passing
+        # Default: 3 groups of 3 channels for the 9-channel synthetic dataset
+        self.channel_groups = getattr(args, 'channel_groups',
+                                      [(0, 1, 2), (3, 4, 5), (6, 7, 8)])
+        self.channel_group_bias = self._build_channel_group_bias(
+            self.enc_in, self.channel_groups)
 
         # Currrently I embed self.patch_len points -> patch_len
         self.unary_factors = nn.Sequential(
@@ -505,6 +418,31 @@ class PtModel(nn.Module):
 			nn.Linear(self.dim_z, self.dim_z)
 		)
 
+    @staticmethod
+    def _build_channel_group_bias(enc_in, channel_groups):
+        """
+        Build [enc_in, enc_in] additive bias: within-group 0, cross-group -inf.
+        channel_groups: list of tuples/lists, e.g. [(0,1,2), (3,4,5), (6,7,8)]
+        """
+        groups = []
+        for g in channel_groups:
+            groups.append(list(g) if isinstance(g, (tuple, list)) else [int(g)])
+        ch2gid = {}
+        for gid, g in enumerate(groups):
+            for ch in g:
+                ch2gid[int(ch)] = gid
+        next_gid = len(groups)
+        for ch in range(enc_in):
+            if ch not in ch2gid:
+                ch2gid[ch] = next_gid
+                next_gid += 1
+        neg_inf = torch.finfo(torch.float32).min
+        bias = torch.zeros((enc_in, enc_in), dtype=torch.float32)
+        for i in range(enc_in):
+            for j in range(enc_in):
+                if ch2gid[i] != ch2gid[j]:
+                    bias[i, j] = neg_inf
+        return bias
 
     def forward(
         self,
@@ -548,9 +486,10 @@ class PtModel(nn.Module):
                 0, enc_in, dtype=torch.long, device=device
             )
             position_ids_channel = position_ids_channel.unsqueeze(0)
-        # update dependency mask
+        # update dependency mask (inject group bias for channel axis)
         dependency_mask_channel = self._update_dependency_mask(
-            dependency_mask_channel, enc_in, output_dependencies, unary_type
+            dependency_mask_channel, enc_in, output_dependencies, unary_type,
+            prior_bias_2d=self.channel_group_bias
         )
         dependency_mask_time = self._update_dependency_mask(
             dependency_mask_time, seq_len, output_dependencies, unary_type
@@ -560,7 +499,7 @@ class PtModel(nn.Module):
         qz = unary_potentials
         # for position_embedding_generation_channel
 
-        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.view(batch_size*seq_len, enc_in, -1), position_ids_channel)
+        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.transpose(1, 2).reshape(batch_size * seq_len, enc_in, -1), position_ids_channel)
         # for position_embedding_generation
         position_embeddings_time = self.rotary_emb_time(unary_potentials.view(batch_size*enc_in, seq_len, -1), position_ids_time)
         
@@ -607,14 +546,20 @@ class PtModel(nn.Module):
 
     
     def _update_dependency_mask(
-        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type
+        self, dependency_mask: torch.Tensor, seq_length, output_dependencies: bool, type,
+        prior_bias_2d: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
 
         attn_mask_converter = AttentionMaskConverter(is_causal=False)
         dependency_mask = attn_mask_converter.to_4d(
             dependency_mask, seq_length, dtype = type
         )
-        
+
+        # inject prior bias (e.g. group-based -inf mask) if provided
+        if prior_bias_2d is not None:
+            gb = prior_bias_2d.to(device=dependency_mask.device, dtype=dependency_mask.dtype)
+            dependency_mask = dependency_mask + gb.view(1, 1, seq_length, seq_length)
+
         # mask diagonals
         diag_mask = torch.eye(seq_length, dtype=dependency_mask.dtype, device=dependency_mask.device).unsqueeze(0).unsqueeze(0)
         dependency_mask = dependency_mask.masked_fill(diag_mask.to(torch.bool), torch.finfo(dependency_mask.dtype).min)

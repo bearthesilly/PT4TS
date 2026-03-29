@@ -1,8 +1,11 @@
 export CUDA_VISIBLE_DEVICES=0
 seed=2025
 
-DATA_PATH=periodicity_150.npy
-MODEL_ID=syn_period_150_experiment
+# ---------- Generate synthetic data (deterministic, seed=2025) ----------
+python -u toy_experiment_related/syn_temporal_locality_generation.py
+
+DATA_PATH=temporal_locality_150.npy
+MODEL_ID=syn_temporal_decay_150_experiment
 ENC=10
 
 COMMON="--task_name long_term_forecast --is_training 1 \
@@ -15,8 +18,8 @@ COMMON="--task_name long_term_forecast --is_training 1 \
   --seed $seed --learning_rate 0.001 --itr 1 \
   --patch_len 1 --n_heads 1 --train_epochs 10"
 
-# 1) PT + periodicity prior
-python -u run.py $COMMON --model PT_syn_period
+# 1) PT + temporal decay prior
+python -u run.py $COMMON --model PT_syn_temporal_decay
 
 # 2) PT vanilla (no prior)
 python -u run.py $COMMON --model PT_forecast_v15

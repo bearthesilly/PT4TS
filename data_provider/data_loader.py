@@ -51,8 +51,15 @@ class Dataset_ETT_hour(Dataset):
         df_raw = pd.read_csv(os.path.join(self.root_path,
                                           self.data_path))
 
-        border1s = [0, 12 * 30 * 24 - self.seq_len, 12 * 30 * 24 + 4 * 30 * 24 - self.seq_len]
-        border2s = [12 * 30 * 24, 12 * 30 * 24 + 4 * 30 * 24, 12 * 30 * 24 + 8 * 30 * 24]
+        full_train_end = 12 * 30 * 24
+        border1s = [0, full_train_end - self.seq_len, full_train_end + 4 * 30 * 24 - self.seq_len]
+        border2s = [full_train_end, full_train_end + 4 * 30 * 24, full_train_end + 8 * 30 * 24]
+
+        pct = getattr(self.args, 'percent', 100)
+        if pct < 100 and self.set_type == 0:
+            used = max(int(full_train_end * pct / 100), self.seq_len + self.pred_len)
+            border2s[0] = used
+
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
@@ -144,8 +151,15 @@ class Dataset_ETT_minute(Dataset):
         df_raw = pd.read_csv(os.path.join(self.root_path,
                                           self.data_path))
 
-        border1s = [0, 12 * 30 * 24 * 4 - self.seq_len, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4 - self.seq_len]
-        border2s = [12 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 4 * 30 * 24 * 4, 12 * 30 * 24 * 4 + 8 * 30 * 24 * 4]
+        full_train_end = 12 * 30 * 24 * 4
+        border1s = [0, full_train_end - self.seq_len, full_train_end + 4 * 30 * 24 * 4 - self.seq_len]
+        border2s = [full_train_end, full_train_end + 4 * 30 * 24 * 4, full_train_end + 8 * 30 * 24 * 4]
+
+        pct = getattr(self.args, 'percent', 100)
+        if pct < 100 and self.set_type == 0:
+            used = max(int(full_train_end * pct / 100), self.seq_len + self.pred_len)
+            border2s[0] = used
+
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
@@ -251,6 +265,12 @@ class Dataset_Custom(Dataset):
         num_vali = len(df_raw) - num_train - num_test
         border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
         border2s = [num_train, num_train + num_vali, len(df_raw)]
+
+        pct = getattr(self.args, 'percent', 100)
+        if pct < 100 and self.set_type == 0:
+            used = max(int(num_train * pct / 100), self.seq_len + self.pred_len)
+            border2s[0] = used
+
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
