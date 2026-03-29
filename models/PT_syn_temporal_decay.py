@@ -1,18 +1,14 @@
 '''
-This model is based on the ST-PT backbone
-PT_channel has rather satisfying performance, but is lack of novelty
-Inspired by Crossformer in Time Series, we design 'PT_hybrid'
-For more information about this model, please refer to the model architecture illustrated
-in the epan folder
+ST-PT + Temporal Locality / Decay Prior  (Potential Modulation on time axis)
 
-There will be a lot of stuff to tune:
-dim_z, dim_g, number of head, the design of unary potential and decoder
-number of iteration, learning rate, binary_factor_scaling, ternary_factor_scaling
+Based on PT_forecast_v15 (backbone).
+Prior: Multiply an exponential decay bias  exp(-alpha * |i - j|)  onto the
+temporal ternary factor messages (messageF along time), so that nearby
+patches contribute more strongly.  This encodes the "short memory" prior
+characteristic of AR(k) processes.
 
-This code might be unfriendly w.r.t. memory management, and may have . 
-If you have any question or suggestion, please drop me a message any time! 
-
-This is model has brought in periodicity prior. In this version, we modify on the ternary factors, not H variables
+Graph primitive:  Potential Modulation
+Injection point:  messageF_time and qh_time  (multiplicative bias)
 '''
 import math
 import warnings
@@ -135,13 +131,10 @@ class PtHeadSelection(nn.Module):
         self.config = config
         self.dim_z = args.d_model
         self.enc_in = args.enc_in
-        self.seq_len = args.seq_len
-        self.patch_len = args.patch_len
         # IMPORTANT: This is not the number of channels of the time series, but the number of channel in Head Dependency
         self.num_channels = args.n_heads
         self.ternary_rank = self.dim_z // self.num_channels
         self.rope_theta = config.rope_theta
-        self.patch_num = self.seq_len // self.patch_len # How many patches in the time dimension
         # This is settled! No need to tune.
         self.regularize_h = 1/self.dim_z
         '''
@@ -154,72 +147,34 @@ class PtHeadSelection(nn.Module):
         self.ternary_factor_v_channel = nn.Parameter(torch.empty(self.num_channels * self.ternary_rank, self.dim_z))
         self.dropout = nn.Dropout(config.dropout_prob_h)
         self._init_ternary()
-        # [enc_in, L, L] -> [enc_in, 1, L, L] for broadcasting
-        self.period_prior = self.period_bias_matrix().view(-1, 1, self.patch_num, self.patch_num)
-    
+
+        # Temporal decay prior: need patch geometry
+        self.seq_len = args.seq_len
+        self.patch_len = args.patch_len
+        self.patch_num = self.seq_len // self.patch_len
+        # [1, 1, L, L] shared across all channels and heads
+        self.decay_prior = self.decay_bias_matrix().view(1, 1, self.patch_num, self.patch_num)
+
+    def decay_bias_matrix(self, alpha=0.15):
+        """
+        Build [L, L] ADDITIVE log-decay bias:  -alpha * |i - j|
+        where L = patch_num.  Added to temporal message_F logits before
+        the joint softmax, so distant patches get exponentially less
+        probability mass.
+        """
+        device = self.ternary_factor_u_time.device
+        idx = torch.arange(self.patch_num, device=device, dtype=torch.float32)
+        dist = torch.abs(idx.unsqueeze(1) - idx.unsqueeze(0))
+        return -alpha * dist
+
     def _init_ternary(self):
         nn.init.normal_(self.ternary_factor_u_channel, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_v_channel, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_u_time, mean=0.0, std=self.config.ternary_initializer_range)
         nn.init.normal_(self.ternary_factor_v_time, mean=0.0, std=self.config.ternary_initializer_range)
 
-    def period_bias_matrix(self):
-        channel_periods_map = [
-            [24],       # Ch0: Base
-            [12],       # Ch1: High Freq
-            [48],       # Ch2: Low Freq
-            [24, 12],   # Ch3: Harmonics (average)
-            [24, 20],   # Ch4: Beating (average)
-            [24],       # Ch5: Base + White Noise
-            [24],       # Ch6: Base + Red Noise
-            [24, 12],   # Ch7: Harmonics + Red Noise
-            [24, 20],   # Ch8: Beating + Red Noise
-            []          # Ch9: Pure Red Noise (No Period)
-        ]
-        # channel_periods_map = [
-        #     [13],       # Ch0: Base
-        #     [7],       # Ch1: High Freq
-        #     [17],       # Ch2: Low Freq
-        #     [17, 7],   # Ch3: Harmonics (average)
-        #     [17, 13],   # Ch4: Beating (average)
-        #     [17],       # Ch5: Base + White Noise
-        #     [17],       # Ch6: Base + Red Noise
-        #     [17, 7],   # Ch7: Harmonics + Red Noise
-        #     [17, 13],   # Ch8: Beating + Red Noise
-        #     []          # Ch9: Pure Red Noise (No Period)
-        # ]
-        patch_num = self.seq_len // self.patch_len
-        device = self.ternary_factor_u_time.device
-        
-        idx = torch.arange(patch_num, device=device, dtype=torch.float32)
-        diff = idx.unsqueeze(1) - idx.unsqueeze(0) # [L, L]
-        
-        bias_matrix_list = []
-        limit = min(self.enc_in, len(channel_periods_map))
-        
-        for i in range(self.enc_in):
-            periods = channel_periods_map[i] if i < len(channel_periods_map) else []
-            
-            if not periods:
-                coeff = torch.ones((patch_num, patch_num), device=device)
-            else:
-                cos_sum = torch.zeros((patch_num, patch_num), device=device)
-                for T in periods:
-                    T_patch = T // self.patch_len
-                    cos_sum += torch.cos(2 * math.pi * diff / T_patch)
-                coeff = cos_sum / len(periods)
-            bias_matrix_list.append(coeff)
-            
-        # Stack [enc_in, L, L] Tensor
-        # Scaling factor is a very important parameter to adjust
-        bias_block = torch.stack(bias_matrix_list, dim=0) * 5.0  # scaling factor, remember to use float
-        return bias_block
-
-
-
-    def calculate_messageF(self, qz, dependency_mask, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v, dimension: str=None):
-        # Here the seq_len is actually the number of patch
-        bsz, seq_len, _ = qz.size() # this seq_len actually is enc_in, the number of channels of the time series
+    def calculate_messageF(self, qz, dependency_mask, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v, dimension: str = None):
+        bsz, seq_len, _ = qz.size()
         qz_u = nn.functional.linear(qz, ternary_factor_u) * self.config.ternary_factor_scaling
         qz_v = nn.functional.linear(qz, ternary_factor_v) * self.config.ternary_factor_scaling
         qz_u = qz_u.view(bsz, seq_len, self.num_channels, self.ternary_rank).transpose(1, 2)
@@ -230,12 +185,10 @@ class PtHeadSelection(nn.Module):
         qz_u = rope_applier.apply(qz_u)
         qz_v = rope_applier.apply(qz_v)
         message_F = torch.matmul(qz_u, qz_v.transpose(2, 3))
-        # raise RuntimeError(message_F.shape) [320, 1, 24, 24]
-        # Here we will operate directly on messageF of time dimension
+        # Temporal decay prior: additive log-decay on temporal logits
         if dimension == 'time':
-            batch_size = message_F.shape[0] // self.enc_in
-            prior_expanded = self.period_prior.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1).view(-1, 1, self.patch_num, self.patch_num).to(message_F.device)
-            message_F = message_F * prior_expanded.to(message_F.dtype)
+            decay_bias = self.decay_prior.to(device=message_F.device, dtype=message_F.dtype)
+            message_F = message_F + decay_bias
         if message_F.size() != (bsz, self.num_channels, seq_len, seq_len):
             raise ValueError(
                 f"Attention weights should be of size {(bsz, self.num_channels, seq_len, seq_len)}, but is"
@@ -251,14 +204,8 @@ class PtHeadSelection(nn.Module):
         return message_F, qz_u, qz_v, qz_uo, bsz, seq_len, qz_u.dtype
 
     def calculate_messageG(self, qh, qz_uo, qz_v, bsz, seq_len, position_ids, position_embeddings, ternary_factor_u, ternary_factor_v, dimension: str = None):
-        # torch.cuda.empty_cache()  
         cos, sin = position_embeddings
         rope_applier = RopeApplier(cos, sin, position_ids)
-        # It will be equivalent to operate on qh_time. 
-        if dimension == 'time':
-            batch_size = qh.shape[0] // self.enc_in
-            prior_expanded = self.period_prior.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1).view(-1, 1, self.patch_num, self.patch_num).to(qh.device)
-            qh = qh * prior_expanded.to(qh.dtype)
         qh_v1 = torch.matmul(qh, qz_v)
         # raise RuntimeError(qh.shape, qz_uo.shape) -> [4, 12, 1024, 1024], [4, 12, 1024, 64]
         qh_v2 = torch.matmul(qh.transpose(2, 3), qz_uo)
@@ -280,7 +227,6 @@ class PtHeadSelection(nn.Module):
         qh_v1 = qh_v1.reshape(bsz, seq_len, self.num_channels * self.ternary_rank)
         qh_v2 = qh_v2.reshape(bsz, seq_len, self.num_channels * self.ternary_rank)
         message_G = (torch.matmul(qh_v1, ternary_factor_u) + torch.matmul(qh_v2, ternary_factor_v)) * self.config.ternary_factor_scaling
-        # raise RuntimeError(torch.matmul(qh_v1, ternary_factor_u).shape, torch.matmul(qh_v2, ternary_factor_v).shape)
         return message_G
     
     def forward(
@@ -308,7 +254,6 @@ class PtHeadSelection(nn.Module):
         )
         qz = qz.view(bs, num_channel, length, -1)
         qz = qz.transpose(1,2).reshape(bs*length, num_channel, -1)
-        # raise RuntimeError(dependency_mask_channel.shape, dependency_mask_time.shape)
         message_F_channel, qz_u_channel, qz_v_channel, qz_uo_channel, bsz_channel, seq_len_channel, type_channel = self.calculate_messageF(
             qz,
             dependency_mask=dependency_mask_channel,
@@ -318,7 +263,7 @@ class PtHeadSelection(nn.Module):
             ternary_factor_v=self.ternary_factor_v_channel,
             dimension='channel'
         )
-        qz = qz.view(bs,length, num_channel,-1).transpose(1,2)
+        qz =qz.view(bs,length, num_channel,-1).transpose(1,2)
         # raise RuntimeError(message_F_time.shape, message_F_channel.shape)
         # Given two message F, combine them together (MAKE SURE THE DATA OF ONE Z VARIABLE IS CORRECTLY ALIGNED AND CONCATENATED)
         mF_time_reshaped = message_F_time.view(bs, num_channel, self.num_channels, length, length).permute(0, 2, 1, 3, 4)
@@ -335,8 +280,8 @@ class PtHeadSelection(nn.Module):
         qh_time_output = qh_time_combined.permute(0, 2, 1, 3, 4)
         qh_time = qh_time_output.reshape(bs * num_channel, self.num_channels, length, length).to(type_time)
         # [bs, num_heads, num_channel, length, num_channel] -> [bs, length, num_heads, num_channel, num_channel] -> [bs*length, num_heads, num_channel, num_channel]
-        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)
-        qh_channel = qh_channel_output.permute(0, 3, 1, 2, 4).reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
+        qh_channel_output = qh_channel_combined.permute(0, 3, 1, 2, 4)  # [bs, length, heads, num_channel, num_channel]
+        qh_channel = qh_channel_output.reshape(bs * length, self.num_channels, num_channel, num_channel).to(type_channel)
     
         message_G_channel = self.calculate_messageG(
             qh=qh_channel,
@@ -350,7 +295,6 @@ class PtHeadSelection(nn.Module):
             ternary_factor_v=self.ternary_factor_v_channel,
             dimension='channel'
         ).reshape(bs, num_channel, length, -1)
-
         message_G_time = self.calculate_messageG(
             qh=qh_time,
             qz_uo=qz_uo_time,
@@ -550,7 +494,7 @@ class PtModel(nn.Module):
         qz = unary_potentials
         # for position_embedding_generation_channel
 
-        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.view(batch_size*seq_len, enc_in, -1), position_ids_channel)
+        position_embeddings_channel = self.rotary_emb_channel(unary_potentials.transpose(1, 2).reshape(batch_size * seq_len, enc_in, -1), position_ids_channel)
         # for position_embedding_generation
         position_embeddings_time = self.rotary_emb_time(unary_potentials.view(batch_size*enc_in, seq_len, -1), position_ids_time)
         
