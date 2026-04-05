@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0
 seed=2025
 
-# ---------- Generate synthetic data (deterministic, seed=2025) ----------
+# ---------- Generate synthetic data ----------
 python -u toy_experiment_related/syn_channel_group_generation_v2.py
 
 DATA_PATH=channel_group_v2_150.npy
@@ -18,10 +18,10 @@ COMMON="--task_name long_term_forecast --is_training 1 \
   --seed $seed --learning_rate 0.001 --itr 1 \
   --patch_len 1 --n_heads 1 --train_epochs 10"
 
-# 1) PT + channel grouping prior v2
+# 1) ST-PT + Source Separation prior (known mixing matrix)
 python -u run.py $COMMON --model PT_syn_channel_group_v2
 
-# 2) PT vanilla (no prior)
+# 2) ST-PT vanilla (no prior)
 python -u run.py $COMMON --model PT_forecast_v15
 
 # 3) DLinear
