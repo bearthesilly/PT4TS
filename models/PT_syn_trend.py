@@ -468,7 +468,7 @@ class PtModel(nn.Module):
         # Here I concatenate all the feature tensors with the dimension of dim_z, and project them into pred_len
         # [bs, enc_in, dim_z, patch_num] -> [bs, enc_in, patch_num*dim_z] -> [bs, enc_in, pred_len]
         self.prediction = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
-        self.prediction_trend = nn.Linear(self.patch_num * self.dim_z, self.pred_len, bias=True)
+        self.prediction_trend = nn.Linear(self.patch_num * self.dim_m, self.pred_len, bias=True)
         # Currently, no dropout is deployed
         # if args.dropout != None:
         #     self.dropout = nn.Dropout(args.dropout)
