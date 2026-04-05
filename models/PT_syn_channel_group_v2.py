@@ -312,7 +312,7 @@ class PtGroupPooling(nn.Module):
     additional message to each group member.  No learnable projection —
     the prior IS the structural knowledge of which channels to pool.
     """
-    SCALING = 200.0  # match the magnitude used by the successful PtLagPrior
+    SCALING = 5.0  # match the magnitude used by the successful PtLagPrior
 
     def __init__(self, args):
         super().__init__()

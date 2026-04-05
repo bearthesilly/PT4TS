@@ -312,7 +312,7 @@ class PtTopologyMessage(nn.Module):
     No learnable projection — the prior IS the structural knowledge of
     which channels are adjacent.
     """
-    SCALING = 200.0  # match the magnitude used by the successful PtLagPrior
+    SCALING = 5.0  # match the magnitude used by the successful PtLagPrior
 
     def __init__(self, args):
         super().__init__()
