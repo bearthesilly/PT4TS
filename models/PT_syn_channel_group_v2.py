@@ -334,46 +334,6 @@ class PtTopicModeling(nn.Module):
         return message_G
 
 
-<<<<<<< HEAD
-class PtGroupPooling(nn.Module):
-    """Channel Grouping Prior: parameter-free within-group consensus message.
-
-    For each group of channels, compute the average Z representation across
-    group members and send it directly (with a large fixed scaling) as an
-    additional message to each group member.  No learnable projection —
-    the prior IS the structural knowledge of which channels to pool.
-    """
-    SCALING = 5.0  # match the magnitude used by the successful PtLagPrior
-
-    def __init__(self, args):
-        super().__init__()
-        self.enc_in = args.enc_in
-        # Default groups for 9-channel synthetic dataset
-        self.groups = getattr(args, 'channel_groups',
-                              [(0, 1, 2), (3, 4, 5), (6, 7, 8)])
-
-    def forward(self, qz_norm: torch.Tensor) -> torch.Tensor:
-        """Compute group-pooling messages.
-        Args:
-            qz_norm: normalized qz, shape [bs, enc_in, patch_num, dim_z]
-        Returns:
-            group_message: same shape, to be added into qz update.
-        """
-        msg = torch.zeros_like(qz_norm)
-        for group in self.groups:
-            group = [ch for ch in group if ch < qz_norm.shape[1]]
-            if len(group) < 2:
-                continue
-            # Compute within-group average (parameter-free denoising)
-            group_avg = qz_norm[:, group].mean(dim=1)  # [bs, patch_num, dim_z]
-            # Send directly with large scaling — no learnable W matrix
-            for ch in group:
-                msg[:, ch] = self.SCALING * group_avg
-        return msg
-
-
-=======
->>>>>>> 271d57e3538bd3b9b4b75420f058fc6a4e21295c
 class PtEncoderIterator(nn.Module):
     def __init__(self, args):
         super().__init__()
