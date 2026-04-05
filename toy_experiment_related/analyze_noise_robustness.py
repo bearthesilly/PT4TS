@@ -14,18 +14,21 @@ EXPERIMENTS = {
         'noise_tags':   ['0p05', '0p15', '0p30', '0p50'],
         'prior_model':  'PT_syn_lag',
         'vanilla_model': 'PT_forecast_v15',
+        'id_prefix':    'lag_noise',
     },
     'Periodicity': {
         'noise_levels': [0.00, 0.30, 0.60, 1.00],
         'noise_tags':   ['0p00', '0p30', '0p60', '1p00'],
         'prior_model':  'PT_syn_period',
         'vanilla_model': 'PT_forecast_v15',
+        'id_prefix':    'period_noise',
     },
     'Trend': {
         'noise_levels': [0.10, 0.30, 0.50, 0.80],
         'noise_tags':   ['0p10', '0p30', '0p50', '0p80'],
         'prior_model':  'PT_syn_trend',
         'vanilla_model': 'PT_forecast_v15',
+        'id_prefix':    'trend_noise',
     },
 }
 
@@ -96,7 +99,7 @@ def main():
         prior_mses, vanilla_mses, noise_vals = [], [], []
 
         for nl, tag in zip(cfg['noise_levels'], cfg['noise_tags']):
-            model_id = f"noise_{tag}"
+            model_id = f"{cfg['id_prefix']}_{tag}"
             prior  = find_result(results, model_id, cfg['prior_model'])
             vanilla = find_result(results, model_id, cfg['vanilla_model'])
 
