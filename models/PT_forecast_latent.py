@@ -54,7 +54,6 @@ class PtLatentModel(nn.Module):
         self.enc_in = args.enc_in
         self.num_enc_iter = args.e_layers
         self.num_dec_iter = max(args.d_layers, 1)
-        self.num_oracle_iter = 1
 
         self.patch_num = self.seq_len // self.patch_len
         self.future_patch_num = math.ceil(self.pred_len / self.patch_len)
@@ -86,30 +85,20 @@ class PtLatentModel(nn.Module):
         self.z_prior = nn.Parameter(torch.empty(self.dim_z))
         nn.init.normal_(self.z_prior, std=0.02)
 
-        # Per-patch prediction head: each Z_dec independently → patch_len values
-        # Shared across all future patch positions (position info is in Z itself)
-        self.patch_predictor = nn.Sequential(
-            nn.Linear(self.dim_z, self.dim_z),
-            nn.GELU(),
-            nn.Linear(self.dim_z, self.patch_len),
+        # Prediction head: future Z → pred_len per channel
+        self.prediction = nn.Linear(
+            self.future_patch_num * self.dim_z, self.pred_len, bias=True
         )
 
         # Loss hyper-parameters (tunable)
         self.lambda_latent = 1.0
         self.lambda_kl = 0.1
 
-        # MFVI context cache: avoids rebuilding masks & RoPE every forward
-        self._ctx_cache = {}
-
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
     def _mfvi_ctx(self, B, N, L_time, device, dtype):
-        """Build (or retrieve cached) masks, position IDs, and RoPE."""
-        key = (B, N, L_time, device, dtype)
-        if key in self._ctx_cache:
-            return self._ctx_cache[key]
-
+        """Build masks, position IDs, and RoPE for a temporal length *L_time*."""
         mask_time = _build_dep_mask(B * N, L_time, device, dtype)
         mask_chan = _build_dep_mask(B * L_time, N, device, dtype)
 
@@ -121,7 +110,7 @@ class PtLatentModel(nn.Module):
         rope_t = self.rotary_emb_time(dummy_t, pid_t)
         rope_c = self.rotary_emb_channel(dummy_c, pid_c)
 
-        ctx = dict(
+        return dict(
             dependency_mask_time=mask_time,
             dependency_mask_channel=mask_chan,
             position_ids_time=pid_t,
@@ -129,8 +118,6 @@ class PtLatentModel(nn.Module):
             position_embeddings_time=rope_t,
             position_embeddings_channel=rope_c,
         )
-        self._ctx_cache[key] = ctx
-        return ctx
 
     def _mfvi_loop(self, unary, qz, n_iter, ctx):
         """Standard MFVI: *n_iter* iterations of the shared iterator."""
@@ -193,12 +180,11 @@ class PtLatentModel(nn.Module):
         z_dec = z_full[:, :, P:, :]                # [B, N, Sf, d]
 
         # ============================================================
-        # Per-patch prediction: Z [B,N,Sf,d] → patches [B,N,Sf,patch_len]
+        # Prediction head
         # ============================================================
-        patches_out = self.patch_predictor(z_dec)   # [B, N, Sf, patch_len]
-        dec_out = patches_out.reshape(B, N, -1)     # [B, N, Sf*patch_len]
-        dec_out = dec_out[:, :, :self.pred_len]     # trim padding if needed
-        dec_out = dec_out.permute(0, 2, 1)          # [B, pred_len, N]
+        dec_out = self.prediction(
+            z_dec.reshape(B, N, -1)
+        ).permute(0, 2, 1)                         # [B, pred_len, N]
 
         # de-normalise
         dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).expand_as(dec_out)
@@ -222,7 +208,7 @@ class PtLatentModel(nn.Module):
                 )
                 z_target = self._mfvi_loop(
                     unary_oracle, unary_oracle.clone(),
-                    self.num_oracle_iter, full_ctx,
+                    self.num_enc_iter, full_ctx,
                 )[:, :, P:, :]                              # [B, N, Sf, d]
 
             # SmoothL1 on raw Z scores
