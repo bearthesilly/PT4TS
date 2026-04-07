@@ -54,7 +54,8 @@ class PtLatentModel(nn.Module):
         self.enc_in = args.enc_in
         self.num_enc_iter = args.e_layers
         self.num_dec_iter = max(args.d_layers, 1)
-        self.num_oracle_iter = 1
+        # P0: oracle iterations should match encoder for high-quality target
+        self.num_oracle_iter = self.num_enc_iter
 
         self.patch_num = self.seq_len // self.patch_len
         self.future_patch_num = math.ceil(self.pred_len / self.patch_len)
@@ -82,28 +83,39 @@ class PtLatentModel(nn.Module):
             nn.Linear(self.dim_z, self.dim_z),
         )
 
-        # Learnable prior for future Z nodes (replaces observation-driven unary)
-        self.z_prior = nn.Parameter(torch.empty(self.dim_z))
-        nn.init.normal_(self.z_prior, std=0.02)
+        # P0: Position-aware learnable prior for future Z nodes
+        # Each future patch position has its own prior = base + positional offset
+        self.z_prior_base = nn.Parameter(torch.empty(self.dim_z))
+        nn.init.normal_(self.z_prior_base, std=0.02)
+        self.z_prior_pos_embed = nn.Parameter(
+            torch.empty(self.future_patch_num, self.dim_z)
+        )
+        nn.init.normal_(self.z_prior_pos_embed, std=0.02)
 
-        # Per-patch prediction head: each Z_dec independently → patch_len values
-        # Shared across all future patch positions (position info is in Z itself)
+        # P1: Prediction head — per-patch MLP + cross-patch linear mixing
         self.patch_predictor = nn.Sequential(
             nn.Linear(self.dim_z, self.dim_z),
             nn.GELU(),
             nn.Linear(self.dim_z, self.patch_len),
         )
+        # Cross-patch mixing: lightweight linear layer along patch dimension
+        self.patch_mixer = nn.Linear(self.future_patch_num, self.future_patch_num)
 
-        # Loss hyper-parameters (tunable)
+        # P1: Loss hyper-parameters
         self.lambda_latent = 1.0
         self.lambda_kl = 0.1
 
-        # MFVI context cache: avoids rebuilding masks & RoPE every forward
+        # MFVI context cache
         self._ctx_cache = {}
 
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
+    def _get_z_prior(self, B, N):
+        """Position-aware prior: base + per-position offset. [B, N, Sf, d]"""
+        prior = self.z_prior_base.unsqueeze(0) + self.z_prior_pos_embed  # [Sf, d]
+        return prior.unsqueeze(0).unsqueeze(0).expand(B, N, -1, -1)
+
     def _mfvi_ctx(self, B, N, L_time, device, dtype):
         """Build (or retrieve cached) masks, position IDs, and RoPE."""
         key = (B, N, L_time, device, dtype)
@@ -141,11 +153,12 @@ class PtLatentModel(nn.Module):
     # ------------------------------------------------------------------
     # forward
     # ------------------------------------------------------------------
-    def forward(self, time_series, y_true=None):
+    def forward(self, time_series, y_true=None, current_epoch=None):
         """
         Args:
             time_series: [B, T, N]  observed multivariate series
             y_true:      [B, S, N]  ground-truth future (training only)
+            current_epoch: int      current training epoch (for warmup)
         Returns:
             predictions   [B, pred_len, N]
             aux_loss      scalar  (only when y_true is given)
@@ -164,7 +177,7 @@ class PtLatentModel(nn.Module):
         )
         x = x / stdev
 
-        # ---- patching: [B, T, N] → [B, N, P, patch_len] ----
+        # ---- patching: [B, T, N] -> [B, N, P, patch_len] ----
         x = x.transpose(1, 2).reshape(B, N, P, self.patch_len)
         unary_obs = self.unary_factors(x)          # [B, N, P, d]
         dtype = unary_obs.dtype
@@ -182,7 +195,8 @@ class PtLatentModel(nn.Module):
         # ============================================================
         full_ctx = self._mfvi_ctx(B, N, P + Sf, device, dtype)
 
-        prior_exp = self.z_prior.view(1, 1, 1, -1).expand(B, N, Sf, -1)
+        # P0: position-aware prior
+        prior_exp = self._get_z_prior(B, N)                     # [B, N, Sf, d]
         unary_full = torch.cat([unary_obs, prior_exp], dim=2)   # [B, N, P+Sf, d]
 
         z_full = torch.cat([z_enc, prior_exp], dim=2)
@@ -193,9 +207,16 @@ class PtLatentModel(nn.Module):
         z_dec = z_full[:, :, P:, :]                # [B, N, Sf, d]
 
         # ============================================================
-        # Per-patch prediction: Z [B,N,Sf,d] → patches [B,N,Sf,patch_len]
+        # Per-patch prediction + cross-patch mixing
         # ============================================================
         patches_out = self.patch_predictor(z_dec)   # [B, N, Sf, patch_len]
+
+        # P1: cross-patch mixing — let patches interact along the Sf dim
+        # [B, N, patch_len, Sf] -> mix -> [B, N, patch_len, Sf]
+        patches_out = patches_out.permute(0, 1, 3, 2)
+        patches_out = self.patch_mixer(patches_out)
+        patches_out = patches_out.permute(0, 1, 3, 2)  # back to [B, N, Sf, patch_len]
+
         dec_out = patches_out.reshape(B, N, -1)     # [B, N, Sf*patch_len]
         dec_out = dec_out[:, :, :self.pred_len]     # trim padding if needed
         dec_out = dec_out.permute(0, 2, 1)          # [B, pred_len, N]
@@ -208,17 +229,20 @@ class PtLatentModel(nn.Module):
         # Oracle path — latent consistency target  (training only)
         # ============================================================
         if y_true is not None:
-            with torch.no_grad():
-                # normalise GT with the same observed statistics
-                y_n = (y_true - means) / stdev              # [B, S, N]
-                y_n = y_n.transpose(1, 2)                   # [B, N, S]
-                if self.padded_pred_len > self.pred_len:
-                    y_n = F.pad(y_n, (0, self.padded_pred_len - self.pred_len))
-                y_n = y_n.reshape(B, N, Sf, self.patch_len)
+            # normalise GT with the same observed statistics
+            y_n = (y_true - means) / stdev              # [B, S, N]
+            y_n = y_n.transpose(1, 2)                   # [B, N, S]
+            if self.padded_pred_len > self.pred_len:
+                y_n = F.pad(y_n, (0, self.padded_pred_len - self.pred_len))
+            y_n = y_n.reshape(B, N, Sf, self.patch_len)
 
-                unary_gt = self.unary_factors(y_n)
+            # P2: unary_gt computed WITH gradient so unary_factors
+            # learns to encode future patches properly
+            unary_gt = self.unary_factors(y_n)
+
+            with torch.no_grad():
                 unary_oracle = torch.cat(
-                    [unary_obs.detach(), unary_gt], dim=2
+                    [unary_obs.detach(), unary_gt.detach()], dim=2
                 )
                 z_target = self._mfvi_loop(
                     unary_oracle, unary_oracle.clone(),
@@ -228,12 +252,36 @@ class PtLatentModel(nn.Module):
             # SmoothL1 on raw Z scores
             loss_latent = F.smooth_l1_loss(z_dec, z_target)
 
-            # KL on SquaredSoftmax-normalised distributions
-            p = self.z_norm(z_target)
-            q = self.z_norm(z_dec)
-            loss_kl = F.kl_div((q + 1e-8).log(), p, reduction="batchmean")
+            # P2: Reverse KL — KL(q_decoder || p_oracle) — mode-seeking
+            p = self.z_norm(z_target)           # oracle distribution (detached)
+            q = self.z_norm(z_dec)              # decoder distribution
+            loss_kl = F.kl_div(
+                (p + 1e-8).log(),   # input = log(p)
+                q,                  # target = q
+                reduction="batchmean",
+            )
+            # F.kl_div(input=log(p), target=q) = sum(q * (log(q) - log(p))) = KL(q || p)
 
-            aux_loss = self.lambda_latent * loss_latent + self.lambda_kl * loss_kl
+            # P2: auxiliary reconstruction loss for unary_factors on future patches
+            recon_future = self.unary_factors[0](y_n)  # first linear only
+            # NOT full MLP — just ensure the first-layer embedding is meaningful
+            # Use the full unary_gt to reconstruct back
+            recon_loss = F.mse_loss(
+                self.patch_predictor(unary_gt), y_n
+            )
+
+            # P1: warmup schedule — ramp up aux loss over first 3 epochs
+            warmup_epochs = 3
+            if current_epoch is not None and current_epoch < warmup_epochs:
+                warmup_factor = (current_epoch + 1) / warmup_epochs
+            else:
+                warmup_factor = 1.0
+
+            aux_loss = warmup_factor * (
+                self.lambda_latent * loss_latent
+                + self.lambda_kl * loss_kl
+                + 0.1 * recon_loss
+            )
             return dec_out, aux_loss
 
         return dec_out
@@ -254,9 +302,12 @@ class Model(nn.Module):
         x_dec=None,
         x_mark_dec=None,
         y_true: Optional[torch.Tensor] = None,
+        current_epoch: Optional[int] = None,
         **kwargs,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if y_true is not None:
-            pred, aux_loss = self.model(time_series=x_enc, y_true=y_true)
+            pred, aux_loss = self.model(
+                time_series=x_enc, y_true=y_true, current_epoch=current_epoch
+            )
             return pred, aux_loss
         return self.model(time_series=x_enc)
