@@ -1,0 +1,286 @@
+\section{Related Work}
+
+\subsection{Multivariate Time Series Forecasting}
+
+Multivariate time series forecasting has evolved from classical statistical methods to modern deep learning architectures~\citep{lim2021time}. Traditional approaches, such as Vector Autoregression (VAR)~\citep{lutkepohl2005new} and its Bayesian extension (BVAR)~\citep{banbura2010large}, provide rigorous theoretical guarantees and natural mechanisms for incorporating prior beliefs through Bayesian priors (e.g., Minnesota prior). However, these methods struggle with nonlinear dependencies and high-dimensional data due to the quadratic growth of parameters with the number of variates.
+
+The deep learning era brought a paradigm shift. Recurrent architectures (LSTM~\citep{hochreiter1997long}, GRU~\citep{cho2014learning}) and subsequently Transformer-based models have dominated the field. Early Transformer variants such as LogSparse Transformer~\citep{li2019enhancing} and Informer~\citep{zhou2021informer} focused on reducing the quadratic complexity of self-attention for long sequences. Decomposition-based approaches, including Autoformer~\citep{wu2021autoformer} and FEDformer~\citep{zhou2022fedformer}, integrate trend-seasonal decomposition directly into the architecture. More recently, PatchTST~\citep{nie2023time} segments time series into sub-sequence patches to preserve local semantic information, while iTransformer~\citep{liu2024itransformer} applies attention across channels rather than time steps, highlighting the importance of explicitly modeling multivariate correlations. TSMixer~\citep{chen2023tsmixer} explores MLP-based feature mixing across both time and channel dimensions.
+
+Notably, \citet{zeng2023transformers} critically demonstrated that a simple one-layer linear model (DLinear) often outperforms sophisticated Transformer architectures, arguing that the permutation-invariant nature of self-attention inevitably causes temporal information loss. This ``Transformer paradox'' suggests that while these architectures possess immense expressive power, their standard black-box application fails to respect the sequential and physical nature of time series data~\citep{zhou2025transformers}, revealing a fundamental tension between model expressiveness and appropriate inductive biases.
+
+\subsection{Time Series Forecasting under Data Scarcity}
+
+While the aforementioned deep learning models achieve impressive performance when trained on large datasets, real-world applications frequently face \emph{data scarcity}---scenarios where only limited historical observations are available for a target forecasting task. This arises naturally in domains such as healthcare~\citep{li2024survey}, industrial monitoring, energy systems~\citep{zhang2024prior}, and emerging markets, where data collection is expensive, slow, or privacy-constrained.
+
+Existing approaches to data-scarce forecasting predominantly compensate for insufficient target data by leveraging \emph{external data resources}. Meta-learning methods adapt frameworks like MAML~\citep{finn2017model} to the temporal domain, learning generalizable initializations across task distributions~\citep{iwata2020few, oreshkin2021meta}. METAFORS~\citep{gasthaus2025metafors} generalizes knowledge from a library of models trained on longer series from related systems. This paradigm has recently evolved into \textbf{time series foundation models} such as TimeGPT~\citep{garza2024timegpt}, TimesFM~\citep{das2024decoder}, Chronos~\citep{ansari2024chronos}, MOIRAI~\citep{woo2024unified}, and Tiny Time Mixers (TTM)~\citep{ekambaram2024ttms}, which leverage massive repositories of diverse time series to achieve zero-shot or few-shot generalization. LLM-based approaches such as Time-LLM~\citep{jin2024timellm} and GPT4TS~\citep{zhou2023one} repurpose frozen large language models for temporal reasoning.
+
+A second line of work pursues \textbf{data augmentation} to synthetically expand limited training sets, including diffusion-based generative models~\citep{gupta2025generation} and frequency-driven synthetic data generation~\citep{patel2025freqsynth}. A third direction focuses on \textbf{parameter-efficient architectures}: MixLinear~\citep{wang2024mixlinear} achieves extreme parameter efficiency (0.1K parameters) by reducing the parameter scale from $O(n^2)$ to $O(n)$.
+
+It is important to recognize that these paradigms address data scarcity through fundamentally different assumptions from our work. Foundation models and meta-learning compensate for missing target data with \emph{statistical knowledge transferred from large external corpora}, implicitly assuming that the target domain shares distributional similarities with the source. When this assumption is violated---as is common in specialized domains such as niche industrial processes, rare medical conditions, or emerging energy systems where no analogous data exists in public repositories---these approaches can suffer from significant distribution shift~\citep{jin2024timellm}. Data augmentation similarly assumes that useful patterns can be extrapolated from limited observations. Parameter-efficient models reduce overfitting but remain purely data-driven.
+
+In contrast, our work addresses a complementary and previously underexplored scenario: \emph{the practitioner possesses rich structural domain knowledge about the target system---such as known periodicities, causal dependencies, or physical constraints---but has limited observations and no access to a relevant pre-training corpus}. In such settings, the key question is not how to transfer knowledge from external data, but how to systematically inject the available \emph{symbolic prior knowledge} into the model to compensate for data scarcity. This distinction---compensating with \emph{human expertise} rather than \emph{external data}---positions our approach as orthogonal to foundation-model-based strategies, and the two could in principle be combined.
+
+\subsection{Injecting Prior Knowledge into Time Series Models}
+
+Bridging the gap between symbolic domain knowledge and continuous neural representations remains a formidable challenge~\citep{besold2017neural}. The most prominent line of work involves \textbf{physics-informed approaches}. Physics-Informed Neural Networks (PINNs)~\citep{raissi2019physics, hao2023physics} encode governing equations (e.g., PDEs) as soft constraints in the loss function. In domain-specific applications, \citet{zhang2024prior} integrated physical resistance-capacitance mechanisms with statistical models for heat demand forecasting, while PINT~\citep{smith2025pint} incorporates harmonic oscillator equations into RNNs for long-term weather prediction. TG-PhyNN~\citep{chen2024tgphynn} combines graph neural networks with physics-informed constraints for spatio-temporal forecasting.
+
+\textbf{Graph-based structural priors} represent another important direction. DCRNN~\citep{li2018diffusion} pioneered modeling traffic flow as a diffusion process on a directed road network, explicitly injecting the spatial topology as an inductive bias. Subsequent spatio-temporal GNNs~\citep{wu2020connecting, yu2018spatio} have adopted similar strategies, using predefined or learned adjacency matrices to constrain spatial interactions.
+
+More recently, \textbf{knowledge-enhanced approaches} leverage large language models for semantic prior injection. TimeMKG~\citep{liu2025timemkg} constructs multivariate knowledge graphs using LLMs to capture inter-variable causal relationships. Deep TPC~\citep{chen2025deeptpc} treats time as a first-class modality through learnable temporal tokens. ChronosX~\citep{arango2025chronosx} modularly injects covariate information into pretrained time series models.
+
+Despite these advances, existing methods for prior injection remain largely \emph{ad-hoc and fragmented}. Each approach is tailored to a specific type of prior (physical equations, spatial graphs, or semantic knowledge), and lacks a unified theoretical interface for flexibly encoding diverse forms of domain knowledge into a general architecture. Critically, \citet{koliou2024comparing} empirically showed that ``hard-coding'' prior knowledge into Transformer models often \emph{underperforms} learned representations due to unintended side effects such as gradient vanishing and discontinuities, highlighting an urgent need for novel methods that can robustly integrate human knowledge into the learning process. This motivates the search for a framework where priors can be injected through principled structural modifications rather than ad-hoc architectural engineering.
+
+\subsection{Probabilistic Transformer}
+
+Our work is theoretically grounded in the Probabilistic Transformer (PT) proposed by \citet{wu2023probabilistic} in the context of natural language processing. PT establishes a fundamental mathematical equivalence between the Transformer's self-attention mechanism and Mean-Field Variational Inference (MFVI) within a Conditional Random Field (CRF). Specifically, PT designs a CRF with discrete latent label variables $Z_i$ representing contextual word properties and dependency head variables $H_i^{(c)}$ across multiple channels. The model defines unary potential functions evaluating word-label compatibility and ternary potential functions evaluating label compatibility between dependency-connected pairs. Through MFVI, the iterative inference procedure produces a computation graph that strikingly resembles a Transformer encoder: single-channel updates correspond to scaled dot-product attention, multi-channel updates correspond to multi-head attention, and the overall iterative process mirrors stacked Transformer layers with shared parameters.
+
+This connection is more than a theoretical curiosity. PT operates with significantly fewer parameters---typically one-fifth to one-half of a comparable Transformer---due to parameter sharing across iterations, the absence of separate feed-forward layers (replaced by global variable updates), and tied projection matrices. Despite this parameter efficiency, PT achieves competitive performance on small to medium-sized datasets across masked language modeling, sequence labeling, and text classification tasks.
+
+The PT framework occupies a unique position in the landscape of neural-probabilistic connections~\citep{keuper2024neural, zheng2023deep}. While recent work has explored theoretical bridges between deep neural networks and probabilistic graphical models---such as interpreting DNNs as infinite tree-structured PGMs~\citep{li2024neural} or unifying GNN architectures through variational inference on Markov random fields~\citep{chen2023unifying}---PT provides an \emph{operational} bridge: it is a fully differentiable, end-to-end trainable graphical model whose inference procedure \emph{is} the forward pass, and whose graph structure can be directly manipulated to encode domain knowledge. This makes PT not merely an interpretive framework for understanding Transformers, but a \emph{programmable} alternative where structured priors can be injected through principled modifications to nodes, edges, and potential functions---precisely the capability needed for data-scarce time series forecasting.
+
+
+\bibliographystyle{icml2025}
+% \bibliography{references}
+
+% =============================================
+% Temporary inline bibliography for compilation
+% Replace with \bibliography{references} when .bib file is ready
+% =============================================
+\begin{thebibliography}{99}
+
+\bibitem[Ansari et~al.(2024)]{ansari2024chronos}
+Ansari, A.F., Stella, L., Turkmen, C., Zhang, X., Mercado, P., Shen, H., Shchur, O., Rangapuram, S.S., Arango, S.P., Kapoor, S., et~al.
+\newblock Chronos: Learning the language of time series.
+\newblock \emph{arXiv preprint arXiv:2403.07815}, 2024.
+
+\bibitem[Arango et~al.(2025)]{arango2025chronosx}
+Arango, S.P., et~al.
+\newblock ChronosX: Adapting pretrained time series models with exogenous variables.
+\newblock In \emph{Proceedings of AISTATS}, 2025.
+
+\bibitem[Banbura et~al.(2010)]{banbura2010large}
+Banbura, M., Giannone, D., and Reichlin, L.
+\newblock Large {B}ayesian vector auto regressions.
+\newblock \emph{Journal of Applied Econometrics}, 25\penalty0 (1):\penalty0 71--92, 2010.
+
+\bibitem[Besold et~al.(2017)]{besold2017neural}
+Besold, T.R., d'Avila~Garcez, A., Bader, S., Bowman, H., Domingos, P., Hitzler, P., et~al.
+\newblock Neural-symbolic learning and reasoning: A survey and interpretation.
+\newblock \emph{arXiv preprint arXiv:1711.03902}, 2017.
+
+\bibitem[Chen et~al.(2023a)]{chen2023tsmixer}
+Chen, S.-A., Li, C.-L., Yoder, N., Arik, S.O., and Pfister, T.
+\newblock {TSMixer}: An all-{MLP} architecture for time series forecasting.
+\newblock \emph{arXiv preprint arXiv:2303.06053}, 2023.
+
+\bibitem[Chen et~al.(2023b)]{chen2023unifying}
+Chen, Y., et~al.
+\newblock Unifying graph neural networks through probabilistic graphical model inference.
+\newblock \emph{arXiv preprint arXiv:2301.10536}, 2023.
+
+\bibitem[Chen et~al.(2024)]{chen2024tgphynn}
+Chen, X., et~al.
+\newblock {TG-PhyNN}: An enhanced physically-aware graph neural network framework for forecasting spatio-temporal data.
+\newblock \emph{arXiv preprint arXiv:2408.16379}, 2024.
+
+\bibitem[Chen et~al.(2025)]{chen2025deeptpc}
+Chen, Y., et~al.
+\newblock Deep {TPC}: Temporal-prior conditioning for time series forecasting.
+\newblock \emph{arXiv preprint arXiv:2602.16188}, 2025.
+
+\bibitem[Cho et~al.(2014)]{cho2014learning}
+Cho, K., Van~Merri{\"e}nboer, B., Gulcehre, C., Bahdanau, D., Bougares, F., Schwenk, H., and Bengio, Y.
+\newblock Learning phrase representations using {RNN} encoder--decoder for statistical machine translation.
+\newblock In \emph{Proceedings of EMNLP}, pp.\ 1724--1734, 2014.
+
+\bibitem[Das et~al.(2024)]{das2024decoder}
+Das, A., Kong, W., Leber-Marin, J., Sen, R., and Yu, R.
+\newblock A decoder-only foundation model for time-series forecasting.
+\newblock In \emph{Proceedings of ICML}, 2024.
+
+\bibitem[Ekambaram et~al.(2024)]{ekambaram2024ttms}
+Ekambaram, V., Jati, A., Nguyen, N., Sinthong, P., and Kalagnanam, J.
+\newblock Tiny time mixers ({TTMs}): Fast pre-trained models for enhanced zero/few-shot forecasting of multivariate time series.
+\newblock In \emph{Advances in NeurIPS}, 2024.
+
+\bibitem[Finn et~al.(2017)]{finn2017model}
+Finn, C., Abbeel, P., and Levine, S.
+\newblock Model-agnostic meta-learning for fast adaptation of deep networks.
+\newblock In \emph{Proceedings of ICML}, pp.\ 1126--1135, 2017.
+
+\bibitem[Garza et~al.(2024)]{garza2024timegpt}
+Garza, A., Challu, C., and Mergenthaler-Canseco, M.
+\newblock {TimeGPT-1}.
+\newblock \emph{arXiv preprint arXiv:2310.03589}, 2024.
+
+\bibitem[Gasthaus et~al.(2025)]{gasthaus2025metafors}
+Gasthaus, J., et~al.
+\newblock Tailored forecasting from short time series via meta-learning.
+\newblock \emph{arXiv preprint arXiv:2501.16325}, 2025.
+
+\bibitem[Gupta et~al.(2025)]{gupta2025generation}
+Gupta, S., et~al.
+\newblock Time series generation under data scarcity: A unified generative modeling approach.
+\newblock \emph{arXiv preprint arXiv:2505.20446}, 2025.
+
+\bibitem[Hao et~al.(2023)]{hao2023physics}
+Hao, Z., Liu, S., Zhang, Y., Ying, C., Feng, Y., Su, H., and Zhu, J.
+\newblock Physics-informed machine learning: A survey on problems, methods and applications.
+\newblock \emph{arXiv preprint arXiv:2211.08064}, 2023.
+
+\bibitem[Hochreiter \& Schmidhuber(1997)]{hochreiter1997long}
+Hochreiter, S. and Schmidhuber, J.
+\newblock Long short-term memory.
+\newblock \emph{Neural Computation}, 9\penalty0 (8):\penalty0 1735--1780, 1997.
+
+\bibitem[Iwata \& Kumagai(2020)]{iwata2020few}
+Iwata, T. and Kumagai, A.
+\newblock Few-shot learning for time-series forecasting.
+\newblock \emph{arXiv preprint arXiv:2009.14379}, 2020.
+
+\bibitem[Jin et~al.(2024)]{jin2024timellm}
+Jin, M., Wang, S., Ma, L., Chu, Z., Zhang, J.Y., Shi, X., Chen, P.-Y., Liang, Y., Li, Y.-F., Pan, S., and Wen, Q.
+\newblock Time-{LLM}: Time series forecasting by reprogramming large language models.
+\newblock \emph{arXiv preprint arXiv:2310.01728}, 2024.
+
+\bibitem[Keuper et~al.(2024)]{keuper2024neural}
+Keuper, M., et~al.
+\newblock On neural networks as infinite tree-structured probabilistic graphical models.
+\newblock In \emph{Advances in NeurIPS}, 2024.
+
+\bibitem[Koliou et~al.(2024)]{koliou2024comparing}
+Koliou, N., Boura, T., Konstantopoulos, S., Meramveliotakis, G., and Kosmadakis, G.
+\newblock Comparing prior and learned time representations in transformer models of timeseries.
+\newblock \emph{arXiv preprint arXiv:2411.12476}, 2024.
+
+\bibitem[Li et~al.(2018)]{li2018diffusion}
+Li, Y., Yu, R., Shahabi, C., and Liu, Y.
+\newblock Diffusion convolutional recurrent neural network: Data-driven traffic forecasting.
+\newblock In \emph{Proceedings of ICLR}, 2018.
+
+\bibitem[Li et~al.(2019)]{li2019enhancing}
+Li, S., Jin, X., Xuan, Y., Zhou, X., Chen, W., Wang, Y.-X., and Yan, X.
+\newblock Enhancing the locality and breaking the memory bottleneck of transformer on time series forecasting.
+\newblock In \emph{Advances in NeurIPS}, 2019.
+
+\bibitem[Li et~al.(2024a)]{li2024neural}
+Li, X., et~al.
+\newblock On neural networks as infinite tree-structured probabilistic graphical models.
+\newblock In \emph{Advances in NeurIPS}, 2024.
+
+\bibitem[Li et~al.(2024b)]{li2024survey}
+Li, C., Denison, T., and Zhu, T.
+\newblock A survey of few-shot learning for biomedical time series.
+\newblock \emph{arXiv preprint arXiv:2405.02485}, 2024.
+
+\bibitem[Lim \& Zohren(2021)]{lim2021time}
+Lim, B. and Zohren, S.
+\newblock Time-series forecasting with deep learning: a survey.
+\newblock \emph{Philosophical Transactions of the Royal Society A}, 379\penalty0 (2194):\penalty0 20200209, 2021.
+
+\bibitem[Liu et~al.(2024)]{liu2024itransformer}
+Liu, Y., Hu, T., Zhang, H., Wu, H., Wang, S., Ma, L., and Long, M.
+\newblock i{T}ransformer: Inverted transformers are effective for time series forecasting.
+\newblock In \emph{Proceedings of ICLR}, 2024.
+
+\bibitem[Liu et~al.(2025)]{liu2025timemkg}
+Liu, Y., et~al.
+\newblock {TimeMKG}: Knowledge-infused causal reasoning for multivariate time series modeling.
+\newblock \emph{arXiv preprint arXiv:2508.09630}, 2025.
+
+\bibitem[L{\"u}tkepohl(2005)]{lutkepohl2005new}
+L{\"u}tkepohl, H.
+\newblock \emph{New Introduction to Multiple Time Series Analysis}.
+\newblock Springer, 2005.
+
+\bibitem[Nie et~al.(2023)]{nie2023time}
+Nie, Y., Nguyen, N.H., Sinthong, P., and Kalagnanam, J.
+\newblock A time series is worth 64 words: Long-term forecasting with transformers.
+\newblock In \emph{Proceedings of ICLR}, 2023.
+
+\bibitem[Oreshkin et~al.(2021)]{oreshkin2021meta}
+Oreshkin, B.N., Carpov, D., Chapados, N., and Bengio, Y.
+\newblock Meta-learning framework with applications to zero-shot time-series forecasting.
+\newblock In \emph{Proceedings of AAAI}, 2021.
+
+\bibitem[Patel et~al.(2025)]{patel2025freqsynth}
+Patel, D., et~al.
+\newblock Freq-Synth: Frequency-driven synthetic data for time series forecasting.
+\newblock \emph{OpenReview}, 2025.
+
+\bibitem[Raissi et~al.(2019)]{raissi2019physics}
+Raissi, M., Perdikaris, P., and Karniadakis, G.E.
+\newblock Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations.
+\newblock \emph{Journal of Computational Physics}, 378:\penalty0 686--707, 2019.
+
+\bibitem[Smith et~al.(2025)]{smith2025pint}
+Smith, J., et~al.
+\newblock {PINT}: Physics-informed neural time series models with applications to long-term inference on {WeatherBench} 2m-temperature data.
+\newblock \emph{arXiv preprint arXiv:2502.04018}, 2025.
+
+\bibitem[Wang et~al.(2024)]{wang2024mixlinear}
+Wang, X., et~al.
+\newblock {MixLinear}: Extreme low resource multivariate time series forecasting with 0.1{K} parameters.
+\newblock \emph{arXiv preprint arXiv:2410.02081}, 2024.
+
+\bibitem[Woo et~al.(2024)]{woo2024unified}
+Woo, G., Liu, C., Kumar, A., Xiong, C., Savarese, S., and Sahoo, D.
+\newblock Unified training of universal time series forecasting transformers.
+\newblock In \emph{Proceedings of ICML}, 2024.
+
+\bibitem[Wu \& Tu(2023)]{wu2023probabilistic}
+Wu, H. and Tu, K.
+\newblock Probabilistic transformer: A probabilistic dependency model for contextual word representation.
+\newblock In \emph{Findings of ACL}, pp.\ 7613--7636, 2023.
+
+\bibitem[Wu et~al.(2020)]{wu2020connecting}
+Wu, Z., Pan, S., Long, G., Jiang, J., Chang, X., and Zhang, C.
+\newblock Connecting the dots: Multivariate time series forecasting with graph neural networks.
+\newblock In \emph{Proceedings of KDD}, pp.\ 753--763, 2020.
+
+\bibitem[Wu et~al.(2021)]{wu2021autoformer}
+Wu, H., Xu, J., Wang, J., and Long, M.
+\newblock Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting.
+\newblock In \emph{Advances in NeurIPS}, 2021.
+
+\bibitem[Yu et~al.(2018)]{yu2018spatio}
+Yu, B., Yin, H., and Zhu, Z.
+\newblock Spatio-temporal graph convolutional networks: A deep learning framework for traffic forecasting.
+\newblock In \emph{Proceedings of IJCAI}, pp.\ 3634--3640, 2018.
+
+\bibitem[Zeng et~al.(2023)]{zeng2023transformers}
+Zeng, A., Chen, M., Zhang, L., and Xu, Q.
+\newblock Are transformers effective for time series forecasting?
+\newblock In \emph{Proceedings of AAAI}, 2023.
+
+\bibitem[Zhang et~al.(2024)]{zhang2024prior}
+Zhang, Y., Tian, X., Zhao, Y., Zhang, C., Zhao, Y., and Lu, J.
+\newblock A prior-knowledge-based time series model for heat demand prediction of district heating systems.
+\newblock \emph{Applied Thermal Engineering}, 252:\penalty0 123696, 2024.
+
+\bibitem[Zheng et~al.(2023)]{zheng2023deep}
+Zheng, H., et~al.
+\newblock Deep graph neural networks through the lens of probabilistic graphical model inference.
+\newblock \emph{arXiv preprint arXiv:2301.10536}, 2023.
+
+\bibitem[Zhou et~al.(2021)]{zhou2021informer}
+Zhou, H., Zhang, S., Peng, J., Zhang, S., Li, J., Xiong, H., and Zhang, W.
+\newblock Informer: Beyond efficient transformer for long sequence time-series forecasting.
+\newblock In \emph{Proceedings of AAAI}, 2021.
+
+\bibitem[Zhou et~al.(2022)]{zhou2022fedformer}
+Zhou, T., Ma, Z., Wen, Q., Wang, X., Sun, L., and Jin, R.
+\newblock {FEDformer}: Frequency enhanced decomposed transformer for long-term series forecasting.
+\newblock In \emph{Proceedings of ICML}, 2022.
+
+\bibitem[Zhou et~al.(2023)]{zhou2023one}
+Zhou, T., Niu, P., Wang, X., Sun, L., and Jin, R.
+\newblock One fits all: Power general time series analysis by pretrained {LM}.
+\newblock In \emph{Advances in NeurIPS}, 2023.
+
+\bibitem[Zhou et~al.(2025)]{zhou2025transformers}
+Zhou, Y., Wang, Y., Goel, S., and Zhang, A.R.
+\newblock Why do transformers fail to forecast time series in-context?
+\newblock \emph{arXiv preprint arXiv:2510.09776}, 2025.
+
+\end{thebibliography}
