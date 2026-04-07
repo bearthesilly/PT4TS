@@ -17,7 +17,7 @@ seed=2021
 #   --label_len 48 \
 #   --pred_len 96 \
 #   --e_layers 2 \
-#   --d_layers 1 \
+#   --d_layers 3 \
 #   --factor 2 \
 #   --enc_in 8 \
 #   --dec_in 8 \
@@ -45,7 +45,7 @@ seed=2021
 #   --label_len 48 \
 #   --pred_len 192 \
 #   --e_layers 2 \
-#   --d_layers 1 \
+#   --d_layers 3 \
 #   --factor 3 \
 #   --enc_in 8 \
 #   --dec_in 8 \
@@ -73,7 +73,7 @@ seed=2021
 #   --label_len 48 \
 #   --pred_len 336 \
 #   --e_layers 2 \
-#   --d_layers 1 \
+#   --d_layers 3 \
 #   --factor 3 \
 #   --enc_in 8 \
 #   --dec_in 8 \
@@ -101,7 +101,7 @@ seed=2021
 #   --label_len 48 \
 #   --pred_len 720 \
 #   --e_layers 2 \
-#   --d_layers 1 \
+#   --d_layers 3 \
 #   --factor 3 \
 #   --enc_in 8 \
 #   --dec_in 8 \
@@ -130,7 +130,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -158,7 +158,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -186,7 +186,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -214,7 +214,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -243,7 +243,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -271,7 +271,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -299,7 +299,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -327,7 +327,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -356,7 +356,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -384,7 +384,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -412,7 +412,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -440,7 +440,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -469,7 +469,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -497,7 +497,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -525,7 +525,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -553,7 +553,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -582,7 +582,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
@@ -610,7 +610,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
@@ -638,7 +638,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
@@ -666,7 +666,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 21 \
   --dec_in 21 \
@@ -695,7 +695,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -724,7 +724,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -753,7 +753,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -782,7 +782,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -812,7 +812,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
@@ -841,7 +841,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
@@ -870,7 +870,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
@@ -899,7 +899,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \

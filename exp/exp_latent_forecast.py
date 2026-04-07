@@ -2,9 +2,10 @@
 Experiment class for PT_forecast_latent.
 
 Extends Exp_Long_Term_Forecast to:
-  1. Pass ground-truth future (y_true) to the model during training
+  1. Pass ground-truth future (y_true) and current_epoch to the model during training
   2. Add the model's auxiliary latent-consistency loss to the prediction loss
-  3. Log both components separately for debugging
+  3. Gradient clipping for training stability
+  4. Log both components separately for debugging
 """
 
 from exp.exp_long_term_forecasting import Exp_Long_Term_Forecast
@@ -75,6 +76,7 @@ class Exp_Latent_Forecast(Exp_Long_Term_Forecast):
                         outputs = self.model(
                             batch_x, batch_x_mark, dec_inp, batch_y_mark,
                             y_true=gt_future,
+                            current_epoch=epoch,
                         )
                         if isinstance(outputs, tuple):
                             outputs, aux_loss = outputs
@@ -92,6 +94,7 @@ class Exp_Latent_Forecast(Exp_Long_Term_Forecast):
                     outputs = self.model(
                         batch_x, batch_x_mark, dec_inp, batch_y_mark,
                         y_true=gt_future,
+                        current_epoch=epoch,
                     )
                     if isinstance(outputs, tuple):
                         outputs, aux_loss = outputs
@@ -127,10 +130,13 @@ class Exp_Latent_Forecast(Exp_Long_Term_Forecast):
 
                 if self.args.use_amp:
                     scaler.scale(loss).backward()
+                    scaler.unscale_(model_optim)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                     scaler.step(model_optim)
                     scaler.update()
                 else:
                     loss.backward()
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                     model_optim.step()
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
