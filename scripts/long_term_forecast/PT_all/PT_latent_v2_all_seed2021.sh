@@ -1,120 +1,120 @@
 export CUDA_VISIBLE_DEVICES=0
 
-model_name=PT_forecast_latent
+model_name=PT_forecast_latent_v2
 seed=2021
 
-# ==================== Exchange ====================
-# python -u run.py \
-#   --task_name long_term_forecast \
-#   --is_training 1 \
-#   --root_path ./dataset/exchange_rate/ \
-#   --data_path exchange_rate.csv \
-#   --model_id Exchange_96_96 \
-#   --model $model_name \
-#   --data custom \
-#   --features M \
-#   --seq_len 96 \
-#   --label_len 48 \
-#   --pred_len 96 \
-#   --e_layers 2 \
-#   --d_layers 1 \
-#   --factor 2 \
-#   --enc_in 8 \
-#   --dec_in 8 \
-#   --c_out 8 \
-#   --d_model 128 \
-#   --d_ff 256 \
-#   --top_k 5 \
-#   --des 'Exp' \
-#   --seed $seed \
-#   --learning_rate 0.0015 \
-#   --itr 1 \
-#   --patch_len 4 \
-#   --n_heads 4
+# ==================== Weather ====================
+python -u run.py \
+  --task_name long_term_forecast \
+  --is_training 1 \
+  --root_path ./dataset/weather/ \
+  --data_path weather.csv \
+  --model_id weather_96_96 \
+  --model $model_name \
+  --data custom \
+  --features M \
+  --seq_len 96 \
+  --label_len 48 \
+  --pred_len 96 \
+  --e_layers 2 \
+  --d_layers 3 \
+  --factor 3 \
+  --enc_in 21 \
+  --dec_in 21 \
+  --c_out 21 \
+  --d_model 256 \
+  --d_ff 512 \
+  --top_k 5 \
+  --des 'Exp' \
+  --seed $seed \
+  --learning_rate 0.00027 \
+  --itr 1 \
+  --patch_len 4 \
+  --n_heads 8
 
-# python -u run.py \
-#   --task_name long_term_forecast \
-#   --is_training 1 \
-#   --root_path ./dataset/exchange_rate/ \
-#   --data_path exchange_rate.csv \
-#   --model_id Exchange_96_192 \
-#   --model $model_name \
-#   --data custom \
-#   --features M \
-#   --seq_len 96 \
-#   --label_len 48 \
-#   --pred_len 192 \
-#   --e_layers 2 \
-#   --d_layers 1 \
-#   --factor 3 \
-#   --enc_in 8 \
-#   --dec_in 8 \
-#   --c_out 8 \
-#   --d_model 128 \
-#   --d_ff 256 \
-#   --top_k 5 \
-#   --des 'Exp' \
-#   --seed $seed \
-#   --learning_rate 0.00015 \
-#   --itr 1 \
-#   --patch_len 4 \
-#   --n_heads 8
+python -u run.py \
+  --task_name long_term_forecast \
+  --is_training 1 \
+  --root_path ./dataset/weather/ \
+  --data_path weather.csv \
+  --model_id weather_96_192 \
+  --model $model_name \
+  --data custom \
+  --features M \
+  --seq_len 96 \
+  --label_len 48 \
+  --pred_len 192 \
+  --e_layers 2 \
+  --d_layers 3 \
+  --factor 3 \
+  --enc_in 21 \
+  --dec_in 21 \
+  --c_out 21 \
+  --d_model 256 \
+  --d_ff 512 \
+  --top_k 5 \
+  --des 'Exp' \
+  --learning_rate 0.00027 \
+  --seed $seed \
+  --itr 1 \
+  --patch_len 4 \
+  --n_heads 8
 
-# python -u run.py \
-#   --task_name long_term_forecast \
-#   --is_training 1 \
-#   --root_path ./dataset/exchange_rate/ \
-#   --data_path exchange_rate.csv \
-#   --model_id Exchange_96_336 \
-#   --model $model_name \
-#   --data custom \
-#   --features M \
-#   --seq_len 96 \
-#   --label_len 48 \
-#   --pred_len 336 \
-#   --e_layers 2 \
-#   --d_layers 1 \
-#   --factor 3 \
-#   --enc_in 8 \
-#   --dec_in 8 \
-#   --c_out 8 \
-#   --d_model 128 \
-#   --d_ff 256 \
-#   --top_k 5 \
-#   --des 'Exp' \
-#   --seed $seed \
-#   --learning_rate 0.00015 \
-#   --itr 1 \
-#   --patch_len 4 \
-#   --n_heads 8
+python -u run.py \
+  --task_name long_term_forecast \
+  --is_training 1 \
+  --root_path ./dataset/weather/ \
+  --data_path weather.csv \
+  --model_id weather_96_336 \
+  --model $model_name \
+  --data custom \
+  --features M \
+  --seq_len 96 \
+  --label_len 48 \
+  --pred_len 336 \
+  --e_layers 2 \
+  --d_layers 3 \
+  --factor 3 \
+  --enc_in 21 \
+  --dec_in 21 \
+  --c_out 21 \
+  --d_model 256 \
+  --d_ff 512 \
+  --top_k 5 \
+  --des 'Exp' \
+  --seed $seed \
+  --learning_rate 0.00027 \
+  --itr 1 \
+  --patch_len 4 \
+  --n_heads 8
 
-# python -u run.py \
-#   --task_name long_term_forecast \
-#   --is_training 1 \
-#   --root_path ./dataset/exchange_rate/ \
-#   --data_path exchange_rate.csv \
-#   --model_id Exchange_96_720 \
-#   --model $model_name \
-#   --data custom \
-#   --features M \
-#   --seq_len 96 \
-#   --label_len 48 \
-#   --pred_len 720 \
-#   --e_layers 2 \
-#   --d_layers 1 \
-#   --factor 3 \
-#   --enc_in 8 \
-#   --dec_in 8 \
-#   --c_out 8 \
-#   --d_model 128 \
-#   --d_ff 256 \
-#   --top_k 5 \
-#   --des 'Exp' \
-#   --seed $seed \
-#   --learning_rate 0.00015 \
-#   --itr 1 \
-#   --patch_len 4 \
-#   --n_heads 8
+python -u run.py \
+  --task_name long_term_forecast \
+  --is_training 1 \
+  --root_path ./dataset/weather/ \
+  --data_path weather.csv \
+  --model_id weather_96_720 \
+  --model $model_name \
+  --data custom \
+  --features M \
+  --seq_len 96 \
+  --label_len 48 \
+  --pred_len 720 \
+  --e_layers 2 \
+  --d_layers 3 \
+  --factor 3 \
+  --enc_in 21 \
+  --dec_in 21 \
+  --c_out 21 \
+  --d_model 256 \
+  --d_ff 512 \
+  --top_k 5 \
+  --des 'Exp' \
+  --seed $seed \
+  --learning_rate 0.00027 \
+  --itr 1 \
+  --patch_len 4 \
+  --n_heads 8
 
 # ==================== ETTh1 ====================
 python -u run.py \
@@ -129,14 +129,14 @@ python -u run.py \
   --seq_len 96 \
   --label_len 48 \
   --pred_len 96 \
-  --e_layers 4 \
-  --d_layers 1 \
+  --e_layers 3 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
   --c_out 7 \
-  --d_model 128 \
-  --d_ff 256 \
+  --d_model 256 \
+  --d_ff 1028 \
   --des 'Exp' \
   --itr 1 \
   --seed $seed \
@@ -158,7 +158,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -186,7 +186,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -198,8 +198,8 @@ python -u run.py \
   --seed $seed \
   --learning_rate 0.0001 \
   --top_k 5 \
-  --patch_len 2 \
-  --n_heads 2
+  --patch_len 8 \
+  --n_heads 8
 
 python -u run.py \
   --task_name long_term_forecast \
@@ -214,7 +214,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -243,7 +243,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -271,7 +271,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -299,7 +299,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -327,7 +327,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 4 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -356,7 +356,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -384,7 +384,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -412,7 +412,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -440,7 +440,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -469,7 +469,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -497,7 +497,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -525,7 +525,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -553,7 +553,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 7 \
   --dec_in 7 \
@@ -568,118 +568,6 @@ python -u run.py \
   --patch_len 4 \
   --n_heads 8
 
-# ==================== Weather ====================
-python -u run.py \
-  --task_name long_term_forecast \
-  --is_training 1 \
-  --root_path ./dataset/weather/ \
-  --data_path weather.csv \
-  --model_id weather_96_96 \
-  --model $model_name \
-  --data custom \
-  --features M \
-  --seq_len 96 \
-  --label_len 48 \
-  --pred_len 96 \
-  --e_layers 2 \
-  --d_layers 1 \
-  --factor 3 \
-  --enc_in 21 \
-  --dec_in 21 \
-  --c_out 21 \
-  --d_model 256 \
-  --d_ff 512 \
-  --top_k 5 \
-  --des 'Exp' \
-  --seed $seed \
-  --learning_rate 0.00027 \
-  --itr 1 \
-  --patch_len 4 \
-  --n_heads 8
-
-python -u run.py \
-  --task_name long_term_forecast \
-  --is_training 1 \
-  --root_path ./dataset/weather/ \
-  --data_path weather.csv \
-  --model_id weather_96_192 \
-  --model $model_name \
-  --data custom \
-  --features M \
-  --seq_len 96 \
-  --label_len 48 \
-  --pred_len 192 \
-  --e_layers 2 \
-  --d_layers 1 \
-  --factor 3 \
-  --enc_in 21 \
-  --dec_in 21 \
-  --c_out 21 \
-  --d_model 256 \
-  --d_ff 512 \
-  --top_k 5 \
-  --des 'Exp' \
-  --learning_rate 0.00027 \
-  --seed $seed \
-  --itr 1 \
-  --patch_len 4 \
-  --n_heads 8
-
-python -u run.py \
-  --task_name long_term_forecast \
-  --is_training 1 \
-  --root_path ./dataset/weather/ \
-  --data_path weather.csv \
-  --model_id weather_96_336 \
-  --model $model_name \
-  --data custom \
-  --features M \
-  --seq_len 96 \
-  --label_len 48 \
-  --pred_len 336 \
-  --e_layers 2 \
-  --d_layers 1 \
-  --factor 3 \
-  --enc_in 21 \
-  --dec_in 21 \
-  --c_out 21 \
-  --d_model 256 \
-  --d_ff 512 \
-  --top_k 5 \
-  --des 'Exp' \
-  --seed $seed \
-  --learning_rate 0.00027 \
-  --itr 1 \
-  --patch_len 4 \
-  --n_heads 8
-
-python -u run.py \
-  --task_name long_term_forecast \
-  --is_training 1 \
-  --root_path ./dataset/weather/ \
-  --data_path weather.csv \
-  --model_id weather_96_720 \
-  --model $model_name \
-  --data custom \
-  --features M \
-  --seq_len 96 \
-  --label_len 48 \
-  --pred_len 720 \
-  --e_layers 2 \
-  --d_layers 1 \
-  --factor 3 \
-  --enc_in 21 \
-  --dec_in 21 \
-  --c_out 21 \
-  --d_model 256 \
-  --d_ff 512 \
-  --top_k 5 \
-  --des 'Exp' \
-  --seed $seed \
-  --learning_rate 0.00027 \
-  --itr 1 \
-  --patch_len 4 \
-  --n_heads 8
 
 # ==================== Electricity ====================
 python -u run.py \
@@ -695,7 +583,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -724,7 +612,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -753,7 +641,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -782,7 +670,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 2 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 321 \
   --dec_in 321 \
@@ -812,7 +700,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 96 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
@@ -841,7 +729,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 192 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
@@ -870,7 +758,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 336 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
@@ -899,7 +787,7 @@ python -u run.py \
   --label_len 48 \
   --pred_len 720 \
   --e_layers 3 \
-  --d_layers 1 \
+  --d_layers 3 \
   --factor 3 \
   --enc_in 862 \
   --dec_in 862 \
