@@ -179,7 +179,12 @@ if __name__ == '__main__':
 
     print('Args in experiment:')
     print_args(args)
-    if args.task_name == 'long_term_forecast' and args.model in ('PT_forecast_latent', 'PT_forecast_latent_v3', 'PT_forecast_latent_v5'):
+    if args.task_name == 'long_term_forecast' and args.model in (
+        'PT_forecast_latent',
+        'PT_forecast_latent_v3',
+        'PT_forecast_latent_v5',
+        'PT_forecast_latent_v6',
+    ):
         Exp = Exp_Latent_Forecast
     elif args.task_name == 'long_term_forecast':
         Exp = Exp_Long_Term_Forecast
