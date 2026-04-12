@@ -1,11 +1,15 @@
 """
-PT_forecast_latent_v7: Latent-space AR with CRF(MFVI) teacher.
+PT_forecast_latent_v7: Strict AR with dual-pathway MFVI + CRF teacher.
 
 Design philosophy:
-  The AR loop happens entirely in latent space — no "predict patch → re-encode"
-  bottleneck.  A learned transition prior maps z_t → U_{t+1} directly in d_model
-  dimensions, then a single-step MFVI refines it with temporal + channel messages.
-  Patch prediction is a pure output decoder, never fed back.
+  Strict autoregressive generation: each step predicts a patch, and that
+  predicted patch is fed back as observation-level unary evidence for
+  inferring the next latent.  On top of this, a learned transition prior
+  provides a parallel latent-space pathway that bypasses the patch_len
+  bottleneck, giving the MFVI two complementary evidence sources:
+
+    - patch unary:      observation-grounded (forces commitment to a prediction)
+    - transition prior: latent-space shortcut (preserves high-dim information)
 
   During training, a parallel causal MFVI encoder runs on the FULL sequence
   (history + ground-truth future) to produce high-quality teacher latents.
@@ -13,7 +17,7 @@ Design philosophy:
   CRF-quality supervision that mitigates AR cumulative error.
 
 Key differences from v6:
-  1. Transition prior replaces predict→re-encode (no patch_len bottleneck)
+  1. Dual evidence: patch unary + transition prior (v6 only has patch unary)
   2. Teacher is a parallel full-sequence causal encoder (not step-by-step)
   3. Decoder has its own topic_modeling (encoder/decoder partially decoupled)
   4. Learnable damping coefficient
@@ -199,18 +203,21 @@ class CausalEncoderIterator(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Step-wise AR decoder (latent-space transition, no patch re-encoding)
+# Step-wise AR decoder (strict AR with dual evidence)
 # ---------------------------------------------------------------------------
 
 class StepwiseARDecoder(nn.Module):
     """
-    Single-step MFVI decoder that works entirely in latent space.
+    Single-step MFVI decoder for strict autoregressive generation.
+
+    Each future step receives TWO evidence sources:
+      - patch_unary:  from the predicted patch re-encoded through UnaryEncoder
+                      (observation-grounded, strict AR feedback)
+      - trans_prior:  from a learned latent-space transition MLP
+                      (high-bandwidth latent shortcut)
 
     Shares ternary factors with the encoder (same dynamics), but has its own
     topic_modeling (different global context for generation vs encoding).
-
-    The "unary" for each future step comes from the transition prior, not
-    from a predicted-then-re-encoded patch.
     """
 
     def __init__(self, args, head_selection: HeadSelection):
@@ -260,25 +267,32 @@ class StepwiseARDecoder(nn.Module):
         value = RopeApplier(*pe).apply_o(value)
         return value.view(bsz, num_variates, self.num_channels, self.ternary_rank)
 
-    def step(self, past_time_v, trans_prior, time_pe_now, channel_mask, channel_pe, num_iter):
+    def step(self, past_time_v, patch_unary, trans_prior, time_pe_now,
+             channel_mask, channel_pe, num_iter):
         """
         Run single-step MFVI for the new time slice.
 
         Args:
-            past_time_v: cached V projections [B, N, heads, L_past, rank]
-            trans_prior: transition prior logits [B, N, d_model]  (replaces unary)
-            time_pe_now: RoPE for current position
+            past_time_v:  cached V projections [B, N, heads, L_past, rank]
+            patch_unary:  unary from predicted patch [B, N, d_model] (strict AR)
+            trans_prior:  transition prior logits  [B, N, d_model] (latent shortcut)
+            time_pe_now:  RoPE for current position
             channel_mask: dep mask for channel direction
-            channel_pe: RoPE for channel direction
-            num_iter: number of MFVI iterations
+            channel_pe:   RoPE for channel direction
+            num_iter:     number of MFVI iterations
 
         Returns:
-            z_new: inferred latent [B, N, d_model]
+            z_new:      inferred latent [B, N, d_model]
             new_time_v: V projection of z_new for cache update
         """
-        bsz, num_variates, _ = trans_prior.size()
+        bsz, num_variates, _ = patch_unary.size()
         alpha = torch.sigmoid(self.damping_logit)
-        q_new = trans_prior.clone()
+
+        # dual evidence combined as the "unary" term in MFVI
+        evidence = patch_unary + trans_prior
+
+        # initialize from the dual evidence
+        q_new = evidence.clone()
 
         for _ in range(num_iter):
             old_q = q_new
@@ -286,7 +300,6 @@ class StepwiseARDecoder(nn.Module):
 
             # --- time message: current query vs cached past values ---
             time_q_u = self._project_time_query_step(q_new_norm, time_pe_now)
-            # [B, N, heads, L_past]
             logits_time = torch.einsum("bnhr,bnhlr->bnhl", time_q_u, past_time_v)
             logits_time = logits_time.permute(0, 2, 1, 3)  # [B, heads, N, L_past]
 
@@ -307,7 +320,7 @@ class StepwiseARDecoder(nn.Module):
             )
             qh_channel = qh_channel.to(channel_dtype)
 
-            # --- time G message (past→current only) ---
+            # --- time G message (past -> current only) ---
             time_msg = torch.einsum("bhnl,bnhlr->bnhr", qh_time, past_time_v)
             time_msg = self._apply_time_output_rope(time_msg, time_pe_now)
             time_msg = time_msg.reshape(bsz, num_variates, -1)
@@ -325,8 +338,8 @@ class StepwiseARDecoder(nn.Module):
             # --- global / topic message (decoder-own) ---
             global_msg = self.topic_modeling(q_new_norm.unsqueeze(2)).squeeze(2)
 
-            # --- MFVI update: transition prior takes the role of unary ---
-            q_new = (trans_prior + time_msg + channel_msg + global_msg) / self.config.regularize_z
+            # --- MFVI update: dual evidence + messages ---
+            q_new = (evidence + time_msg + channel_msg + global_msg) / self.config.regularize_z
 
             # --- learnable damping ---
             q_new = alpha * q_new + (1 - alpha) * old_q
@@ -493,7 +506,7 @@ class PtLatentModelV7(nn.Module):
             z_hist = self.encoder_iterator(unary_hist, z_hist, **enc_ctx)
 
         # =================================================================
-        # Phase 2: Future AR decoding (latent-space, no patch feedback)
+        # Phase 2: Future AR decoding (strict AR with dual evidence)
         # =================================================================
         hist_norm = self.norm(z_hist)
         hist_time_pe = self._time_pe(batch_size * num_variates, history_len, device, dtype)
@@ -505,15 +518,23 @@ class PtLatentModelV7(nn.Module):
         student_latents = []
 
         for step in range(future_len):
-            # transition prior: z_prev → trans_unary (entirely in latent space)
-            trans_unary = self.transition_prior(z_prev)
+            # ---- strict AR: predict next patch from current latent ----
+            patch_pred = self.patch_predictor(z_prev)       # [B, N, patch_len]
+            pred_patches.append(patch_pred)
 
-            # single-step MFVI
+            # ---- dual evidence for MFVI ----
+            # pathway 1: re-encode predicted patch as observation-level unary
+            patch_unary = self.unary_factors(patch_pred)    # [B, N, d_model]
+            # pathway 2: transition prior in latent space
+            trans_unary = self.transition_prior(z_prev)     # [B, N, d_model]
+
+            # ---- single-step MFVI ----
             time_pe_now = self._time_step_pe(
                 batch_size * num_variates, history_len + step, device, dtype
             )
             z_new, new_v = self.decoder.step(
                 past_time_v=cache_v,
+                patch_unary=patch_unary,
                 trans_prior=trans_unary,
                 time_pe_now=time_pe_now,
                 channel_mask=channel_mask,
@@ -521,10 +542,6 @@ class PtLatentModelV7(nn.Module):
                 num_iter=self.num_dec_iter,
             )
             cache_v = torch.cat([cache_v, new_v], dim=3)
-
-            # output: decode latent → patch
-            patch_pred = self.patch_predictor(z_new)
-            pred_patches.append(patch_pred)
             student_latents.append(z_new)
             z_prev = z_new
 
