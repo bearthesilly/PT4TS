@@ -184,6 +184,7 @@ if __name__ == '__main__':
         'PT_forecast_latent_v3',
         'PT_forecast_latent_v5',
         'PT_forecast_latent_v6',
+        'PT_forecast_latent_v7',
     ):
         Exp = Exp_Latent_Forecast
     elif args.task_name == 'long_term_forecast':

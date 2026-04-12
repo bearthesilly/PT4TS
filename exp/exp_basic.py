@@ -10,7 +10,7 @@ from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer,
     PT_forecast_v17, PT_syn_period, PT_syn_period_2, PT_syn_trend, PT_syn_lag, PatchTST_trend, StateSpaceModel, GPVAR, VAR, BVAR, DynamicFactorModel, \
     PT_syn_sparse_topo, PT_syn_channel_group, PT_syn_temporal_decay, PT_ETT_prior, \
     PT_forecast_latent, PT_forecast_latent_v2, PT_forecast_latent_v3, PT_forecast_latent_v4, \
-    PT_forecast_latent_v5, PT_forecast_latent_v6
+    PT_forecast_latent_v5, PT_forecast_latent_v6, PT_forecast_latent_v7
 
 class Exp_Basic(object):
     def __init__(self, args):
@@ -91,6 +91,7 @@ class Exp_Basic(object):
             'PT_forecast_latent_v4': PT_forecast_latent_v4,
             'PT_forecast_latent_v5': PT_forecast_latent_v5,
             'PT_forecast_latent_v6': PT_forecast_latent_v6,
+            'PT_forecast_latent_v7': PT_forecast_latent_v7,
         }
         if args.model == 'Mamba':
             print('Please make sure you have successfully installed mamba_ssm')
