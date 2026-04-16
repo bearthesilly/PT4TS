@@ -153,6 +153,30 @@ if __name__ == '__main__':
 
     # TimeXer
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
+    parser.add_argument('--ar_hidden', type=int, default=128,
+                        help='hidden size for AR baselines such as DeepVAR/LSTM_AR/TCN_AR/LSTNet')
+    parser.add_argument('--ar_layers', type=int, default=2,
+                        help='number of recurrent/temporal layers for AR baselines')
+    parser.add_argument('--teacher_forcing_ratio', type=float, default=1.0,
+                        help='teacher forcing ratio for trainable AR decoder baselines')
+    parser.add_argument('--lag_order', type=int, default=5,
+                        help='lag order for VAR/GPVAR-style baselines')
+    parser.add_argument('--gp_jitter', type=float, default=1e-5,
+                        help='numerical jitter for GPVAR')
+    parser.add_argument('--gp_max_train_points', type=int, default=96,
+                        help='maximum per-window training points used by exact GPVAR')
+    parser.add_argument('--tcn_kernel_size', type=int, default=3,
+                        help='kernel size for TCN_AR')
+    parser.add_argument('--cnn_kernel', type=int, default=6,
+                        help='CNN temporal kernel for LSTNet')
+    parser.add_argument('--highway_window', type=int, default=24,
+                        help='highway window size for LSTNet')
+    parser.add_argument('--skip', type=int, default=24,
+                        help='skip period for LSTNet')
+    parser.add_argument('--skip_hidden', type=int, default=5,
+                        help='skip-RNN hidden size for LSTNet')
+    parser.add_argument('--lstnet_cnn_hidden', type=int, default=64,
+                        help='CNN hidden channels for LSTNet')
 
     args = parser.parse_args()
     # have a copy of the args above for usage! 

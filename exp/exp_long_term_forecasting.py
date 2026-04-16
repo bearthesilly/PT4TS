@@ -93,6 +93,24 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         'StateSpaceModel',
     }
 
+    TEACHER_FORCED_AR_MODELS = {
+        'AutoTimes',
+        'DeepVAR',
+        'LSTM_AR',
+        'TCN_AR',
+    }
+
+    def _model_forward(self, batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y=None):
+        if batch_y is not None and self.args.model in self.TEACHER_FORCED_AR_MODELS:
+            return self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, y_true=batch_y)
+        return self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+    def _probabilistic_loss(self, target):
+        model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        if hasattr(model, 'nll_loss'):
+            return model.nll_loss(target)
+        return None
+
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
@@ -139,20 +157,28 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs = self._model_forward(
+                            batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y=batch_y
+                        )
 
                         f_dim = -1 if self.args.features == 'MS' else 0
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
                         batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                        loss = criterion(outputs, batch_y)
+                        loss = self._probabilistic_loss(batch_y)
+                        if loss is None:
+                            loss = criterion(outputs, batch_y)
                         train_loss.append(loss.item())
                 else:
-                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    outputs = self._model_forward(
+                        batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y=batch_y
+                    )
 
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                    loss = criterion(outputs, batch_y)
+                    loss = self._probabilistic_loss(batch_y)
+                    if loss is None:
+                        loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
                 # if self.args.model == 'Transformer_vanilla':
                 #     for j in range(self.args.e_layers):

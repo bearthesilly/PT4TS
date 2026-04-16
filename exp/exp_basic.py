@@ -8,6 +8,7 @@ from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer,
     PT_forecast_v9, PT_forecast_v10, MLP, PT_forecast_v11, PT_forecast_v12, TSFusion, \
     PT_forecast_v13, PT_forecast_v14, PT_forecast_v15, PT_forecast_v16, \
     PT_forecast_v17, PT_syn_period, PT_syn_period_2, PT_syn_trend, PT_syn_lag, PatchTST_trend, StateSpaceModel, GPVAR, VAR, BVAR, DynamicFactorModel, \
+    AutoTimes, DeepVAR, LSTM_AR, TCN_AR, LSTNet, \
     PT_syn_sparse_topo, PT_syn_channel_group, PT_syn_temporal_decay, PT_ETT_prior, \
     PT_forecast_latent, PT_forecast_latent_v2, PT_forecast_latent_v3, PT_forecast_latent_v4, \
     PT_forecast_latent_v5, PT_forecast_latent_v6, PT_forecast_latent_v7
@@ -81,6 +82,11 @@ class Exp_Basic(object):
             'VAR': VAR,
             'BVAR': BVAR,
             'DynamicFactorModel': DynamicFactorModel,
+            'AutoTimes': AutoTimes,
+            'DeepVAR': DeepVAR,
+            'LSTM_AR': LSTM_AR,
+            'TCN_AR': TCN_AR,
+            'LSTNet': LSTNet,
             'PT_syn_sparse_topo': PT_syn_sparse_topo,
             'PT_syn_channel_group': PT_syn_channel_group,
             'PT_syn_temporal_decay': PT_syn_temporal_decay,
