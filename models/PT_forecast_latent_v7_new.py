@@ -1,26 +1,26 @@
 """
-PT_forecast_latent_v7: Strict AR with dual-pathway MFVI + CRF teacher.
+PT_forecast_latent_v7: Strict AR with CRF(MFVI) + AutoTimes-style training.
 
-Design philosophy:
-  Strict autoregressive generation: each step predicts a patch, and that
-  predicted patch is fed back as observation-level unary evidence for
-  inferring the next latent.  On top of this, a learned transition prior
-  provides a parallel latent-space pathway that bypasses the patch_len
-  bottleneck, giving the MFVI two complementary evidence sources:
+Design philosophy — two-phase paradigm:
 
-    - patch unary:      observation-grounded (forces commitment to a prediction)
-    - transition prior: latent-space shortcut (preserves high-dim information)
+  Training (teacher-forced, like AutoTimes / GPT):
+    Concatenate history + GT-future patches into one sequence, run causal
+    MFVI over the whole thing in a single parallel pass.  At each position t
+    the latent z_t predicts patch_{t+1} (next-patch prediction).  This gives
+    CRF-quality latent representations as "free" supervision — no separate
+    teacher path needed.  A transition-prior auxiliary loss ensures the
+    inference-only transition network is also trained.
 
-  During training, a parallel causal MFVI encoder runs on the FULL sequence
-  (history + ground-truth future) to produce high-quality teacher latents.
-  A KL loss distills this into the AR-decoded student latents, providing
-  CRF-quality supervision that mitigates AR cumulative error.
+  Inference (strict AR rollout):
+    Generate one patch at a time: z_t → predict patch → re-encode as unary
+    + transition prior → single-step MFVI → z_{t+1} → repeat.
+    The predicted patch IS fed back (strict AR).
 
-Key differences from v6:
-  1. Dual evidence: patch unary + transition prior (v6 only has patch unary)
-  2. Teacher is a parallel full-sequence causal encoder (not step-by-step)
-  3. Decoder has its own topic_modeling (encoder/decoder partially decoupled)
-  4. Learnable damping coefficient
+Key components:
+  - CausalEncoderIterator:  causal MFVI (time causal + channel bidirectional)
+  - StepwiseARDecoder:      single-step MFVI for inference-time AR rollout
+  - TransitionPrior:        d_model → d_model MLP, trained via aux loss,
+                            provides latent-space shortcut during AR inference
 """
 import math
 from typing import Optional, Tuple
@@ -99,8 +99,6 @@ class HeadSelection(nn.Module):
         ]:
             nn.init.normal_(p, mean=0.0, std=config.ternary_initializer_range)
 
-    # -- low-level message helpers (same math as v15) --
-
     def _messageF(self, qz, mask, pe, u, v):
         bsz, seq_len, _ = qz.size()
         qz_u = F.linear(qz, u) * config.ternary_factor_scaling
@@ -117,14 +115,12 @@ class HeadSelection(nn.Module):
         return mF, qz_u, qz_v, qz_uo, bsz, seq_len, qz_u.dtype
 
     def _messageG_causal(self, qh, qz_v, bsz, seq_len, pe, u):
-        """G message using only past→current direction (for causal time)."""
         rope = RopeApplier(*pe)
         v1 = rope.apply_o(torch.matmul(qh, qz_v))
         v1 = v1.transpose(1, 2).contiguous().reshape(bsz, seq_len, -1)
         return torch.matmul(v1, u) * config.ternary_factor_scaling
 
     def _messageG_full(self, qh, qz_uo, qz_v, bsz, seq_len, pe, u, v):
-        """G message using both directions (for bidirectional channel)."""
         rope = RopeApplier(*pe)
         v1 = rope.apply_o(torch.matmul(qh, qz_v))
         v2 = rope.apply(torch.matmul(qh.transpose(2, 3), qz_uo))
@@ -132,27 +128,22 @@ class HeadSelection(nn.Module):
         v2 = v2.transpose(1, 2).contiguous().reshape(bsz, seq_len, -1)
         return (torch.matmul(v1, u) + torch.matmul(v2, v)) * config.ternary_factor_scaling
 
-    # -- full encoder-style forward (time causal, channel bidirectional) --
-
     def forward(self, qz, dependency_mask_channel=None, dependency_mask_time=None,
                 position_embeddings_time=None, position_embeddings_channel=None, **_kw):
         bs, num_variates, seq_len, _ = qz.size()
 
-        # --- time direction (causal) ---
         qz_t = qz.view(bs * num_variates, seq_len, -1)
         mF_t, _, qz_v_t, _, bsz_t, slen_t, dt_t = self._messageF(
             qz_t, dependency_mask_time, position_embeddings_time,
             self.ternary_factor_u_time, self.ternary_factor_v_time,
         )
 
-        # --- channel direction (bidirectional) ---
         qz_c = qz.transpose(1, 2).reshape(bs * seq_len, num_variates, -1)
         mF_c, _, qz_v_c, qz_uo_c, bsz_c, slen_c, dt_c = self._messageF(
             qz_c, dependency_mask_channel, position_embeddings_channel,
             self.ternary_factor_u_channel, self.ternary_factor_v_channel,
         )
 
-        # --- joint softmax over time + channel candidates ---
         mF_t_r = mF_t.view(bs, num_variates, self.num_channels, seq_len, seq_len).permute(0, 2, 1, 3, 4)
         mF_c_r = mF_c.view(bs, seq_len, self.num_channels, num_variates, num_variates).permute(0, 2, 3, 1, 4)
         combined = F.softmax(
@@ -168,7 +159,6 @@ class HeadSelection(nn.Module):
             bs * seq_len, self.num_channels, num_variates, num_variates
         ).to(dt_c)
 
-        # --- G messages ---
         mG_t = self._messageG_causal(
             qh_t, qz_v_t, bsz_t, slen_t,
             position_embeddings_time, self.ternary_factor_u_time,
@@ -182,7 +172,7 @@ class HeadSelection(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Encoder iterator (causal MFVI, used for both history-only and full-seq)
+# Encoder iterator (causal MFVI)
 # ---------------------------------------------------------------------------
 
 class CausalEncoderIterator(nn.Module):
@@ -203,41 +193,34 @@ class CausalEncoderIterator(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Step-wise AR decoder (strict AR with dual evidence)
+# Step-wise AR decoder (inference only, strict AR with dual evidence)
 # ---------------------------------------------------------------------------
 
 class StepwiseARDecoder(nn.Module):
     """
-    Single-step MFVI decoder for strict autoregressive generation.
+    Single-step MFVI for inference-time AR rollout.
 
-    Each future step receives TWO evidence sources:
-      - patch_unary:  from the predicted patch re-encoded through UnaryEncoder
-                      (observation-grounded, strict AR feedback)
-      - trans_prior:  from a learned latent-space transition MLP
-                      (high-bandwidth latent shortcut)
-
-    Shares ternary factors with the encoder (same dynamics), but has its own
-    topic_modeling (different global context for generation vs encoding).
+    Shares ALL learned factors with the encoder (ternary + topic_modeling),
+    so every parameter is trained during teacher-forced training.
+    Only the learnable damping scalar is decoder-specific.
     """
 
-    def __init__(self, args, head_selection: HeadSelection):
+    def __init__(self, args, encoder_iterator: CausalEncoderIterator):
         super().__init__()
         self.config = config
-        self.head_selection = head_selection          # shared ternary factors
-        self.topic_modeling = PtTopicModeling(args)   # decoder-own FFN
+        self.head_selection = encoder_iterator.head_selection   # shared
+        self.topic_modeling = encoder_iterator.topic_modeling    # shared
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
         self.dim_z = args.d_model
         self.num_channels = args.n_heads
         self.ternary_rank = self.dim_z // self.num_channels
         self.regularize_h = 1 / self.dim_z
 
-        # learnable damping
         self.damping_logit = nn.Parameter(torch.tensor(0.0))
 
-    # --- time-direction projections for KV cache ---
+    # --- time-direction V cache projections ---
 
     def project_time_values_seq(self, qz, pe):
-        """Project a full sequence of normed latents into time-direction V cache."""
         bsz, num_variates, seq_len, _ = qz.size()
         qz_flat = qz.view(bsz * num_variates, seq_len, -1)
         qz_v = F.linear(qz_flat, self.head_selection.ternary_factor_v_time) * config.ternary_factor_scaling
@@ -270,47 +253,39 @@ class StepwiseARDecoder(nn.Module):
     def step(self, past_time_v, patch_unary, trans_prior, time_pe_now,
              channel_mask, channel_pe, num_iter):
         """
-        Run single-step MFVI for the new time slice.
+        Single-step MFVI with dual evidence.
 
         Args:
-            past_time_v:  cached V projections [B, N, heads, L_past, rank]
-            patch_unary:  unary from predicted patch [B, N, d_model] (strict AR)
-            trans_prior:  transition prior logits  [B, N, d_model] (latent shortcut)
-            time_pe_now:  RoPE for current position
-            channel_mask: dep mask for channel direction
-            channel_pe:   RoPE for channel direction
-            num_iter:     number of MFVI iterations
-
-        Returns:
-            z_new:      inferred latent [B, N, d_model]
-            new_time_v: V projection of z_new for cache update
+            past_time_v:  [B, N, heads, L_past, rank]
+            patch_unary:  [B, N, d_model]  (from predicted patch, strict AR)
+            trans_prior:  [B, N, d_model]  (latent-space transition)
+            time_pe_now:  RoPE at current position
+            channel_mask: dep mask for channel
+            channel_pe:   RoPE for channel
+            num_iter:     MFVI iterations
         """
         bsz, num_variates, _ = patch_unary.size()
         alpha = torch.sigmoid(self.damping_logit)
-
-        # dual evidence combined as the "unary" term in MFVI
         evidence = patch_unary + trans_prior
-
-        # initialize from the dual evidence
         q_new = evidence.clone()
 
         for _ in range(num_iter):
             old_q = q_new
             q_new_norm = self.norm(q_new)
 
-            # --- time message: current query vs cached past values ---
+            # time message
             time_q_u = self._project_time_query_step(q_new_norm, time_pe_now)
             logits_time = torch.einsum("bnhr,bnhlr->bnhl", time_q_u, past_time_v)
-            logits_time = logits_time.permute(0, 2, 1, 3)  # [B, heads, N, L_past]
+            logits_time = logits_time.permute(0, 2, 1, 3)
 
-            # --- channel message ---
+            # channel message
             mF_c, _, qz_v_c, qz_uo_c, _, _, channel_dtype = self.head_selection._messageF(
                 q_new_norm, channel_mask, channel_pe,
                 self.head_selection.ternary_factor_u_channel,
                 self.head_selection.ternary_factor_v_channel,
             )
 
-            # --- joint softmax (time candidates + channel candidates) ---
+            # joint softmax
             combined = F.softmax(
                 torch.cat([logits_time, mF_c], dim=-1) / self.regularize_h,
                 dim=-1, dtype=torch.float32,
@@ -320,7 +295,7 @@ class StepwiseARDecoder(nn.Module):
             )
             qh_channel = qh_channel.to(channel_dtype)
 
-            # --- time G message (past -> current only) ---
+            # time G
             time_msg = torch.einsum("bhnl,bnhlr->bnhr", qh_time, past_time_v)
             time_msg = self._apply_time_output_rope(time_msg, time_pe_now)
             time_msg = time_msg.reshape(bsz, num_variates, -1)
@@ -328,23 +303,20 @@ class StepwiseARDecoder(nn.Module):
                 time_msg, self.head_selection.ternary_factor_u_time
             ) * config.ternary_factor_scaling
 
-            # --- channel G message (bidirectional) ---
+            # channel G
             channel_msg = self.head_selection._messageG_full(
                 qh_channel, qz_uo_c, qz_v_c, bsz, num_variates, channel_pe,
                 self.head_selection.ternary_factor_u_channel,
                 self.head_selection.ternary_factor_v_channel,
             ).reshape(bsz, num_variates, -1)
 
-            # --- global / topic message (decoder-own) ---
+            # topic
             global_msg = self.topic_modeling(q_new_norm.unsqueeze(2)).squeeze(2)
 
-            # --- MFVI update: dual evidence + messages ---
+            # update
             q_new = (evidence + time_msg + channel_msg + global_msg) / self.config.regularize_z
-
-            # --- learnable damping ---
             q_new = alpha * q_new + (1 - alpha) * old_q
 
-        # project final state for cache
         q_new_norm = self.norm(q_new)
         new_time_v = self._project_time_value_step(q_new_norm, time_pe_now)
         return q_new, new_time_v
@@ -355,7 +327,10 @@ class StepwiseARDecoder(nn.Module):
 # ---------------------------------------------------------------------------
 
 class PtLatentModelV7(nn.Module):
-    """Latent-space AR with CRF(MFVI) teacher supervision."""
+    """
+    Training:  teacher-forced causal MFVI (AutoTimes paradigm)
+    Inference: strict AR rollout with dual evidence
+    """
 
     def __init__(self, args):
         super().__init__()
@@ -369,22 +344,22 @@ class PtLatentModelV7(nn.Module):
 
         self.patch_num = self.seq_len // self.patch_len
         self.future_patch_num = math.ceil(self.pred_len / self.patch_len)
-        self.lambda_latent = 0.1
+        self.lambda_trans = 0.1
 
-        # --- encoder ---
+        # encoder
         self.encoder_iterator = CausalEncoderIterator(args)
 
-        # --- decoder (shares ternary factors, own topic_modeling) ---
-        self.decoder = StepwiseARDecoder(args, self.encoder_iterator.head_selection)
+        # decoder (shares all learned factors with encoder)
+        self.decoder = StepwiseARDecoder(args, self.encoder_iterator)
 
-        # --- transition prior: z_t → U_{t+1} in latent space ---
+        # transition prior: z_t -> prior for z_{t+1} in latent space
         self.transition_prior = nn.Sequential(
             nn.Linear(self.dim_z, self.dim_z),
             nn.GELU(),
             nn.Linear(self.dim_z, self.dim_z),
         )
 
-        # --- patch I/O ---
+        # patch I/O
         self.unary_factors = nn.Sequential(
             nn.Linear(self.patch_len, self.dim_z),
             nn.GELU(),
@@ -398,7 +373,6 @@ class PtLatentModelV7(nn.Module):
 
         self.norm = POTENTIAL2ACT[config.potential_func_z](dim=-1, eps=config.potential_eps)
 
-        # --- positional embeddings ---
         cfg = PtConfig.from_dict(config.to_dict())
         cfg.hidden_size = self.dim_z
         cfg.num_attention_heads = args.n_heads
@@ -408,7 +382,7 @@ class PtLatentModelV7(nn.Module):
 
         self._ctx_cache = {}
 
-    # --- context / PE helpers ---
+    # --- context helpers ---
 
     def _causal_enc_ctx(self, batch_size, num_variates, seq_len, device, dtype):
         key = ("enc", batch_size, num_variates, seq_len, device, dtype)
@@ -460,8 +434,6 @@ class PtLatentModelV7(nn.Module):
         self._ctx_cache[key] = pe
         return pe
 
-    # --- helpers ---
-
     def _split_future_patches(self, y_norm):
         bsz = y_norm.size(0)
         total_len = self.future_patch_num * self.patch_len
@@ -470,65 +442,94 @@ class PtLatentModelV7(nn.Module):
             y_norm = F.pad(y_norm, (0, 0, 0, pad_len))
         return y_norm.transpose(1, 2).reshape(bsz, self.enc_in, self.future_patch_num, self.patch_len)
 
-    def _latent_kl(self, student_logits, teacher_logits):
-        """KL(teacher || student) — teacher is the target distribution."""
-        teacher_prob = self.norm(teacher_logits).detach()
-        student_prob = self.norm(student_logits)
-        teacher_log = torch.log(teacher_prob.clamp_min(1e-8))
-        student_log = torch.log(student_prob.clamp_min(1e-8))
-        return (teacher_prob * (teacher_log - student_log)).sum(dim=-1).mean()
+    # =====================================================================
+    # Training: teacher-forced next-patch prediction (AutoTimes paradigm)
+    # =====================================================================
 
-    # --- forward ---
-
-    def forward(self, time_series, y_true=None, is_training=True):
-        device = time_series.device
-        batch_size = time_series.size(0)
+    def _forward_train(self, x, means, stdev, x_patches, y_true):
+        device = x.device
+        batch_size = x.size(0)
         num_variates = self.enc_in
         history_len = self.patch_num
         future_len = self.future_patch_num
 
-        # --- instance normalization ---
-        means = time_series.mean(1, keepdim=True).detach()
-        x = time_series - means
-        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x = x / stdev
+        # prepare future GT patches
+        y_norm = (y_true - means) / stdev
+        future_gt = self._split_future_patches(y_norm)
 
-        # =================================================================
-        # Phase 1: History encoding (causal MFVI)
-        # =================================================================
-        x_patches = x.transpose(1, 2).reshape(batch_size, num_variates, history_len, self.patch_len)
+        # full sequence: [B, N, P+F, patch_len]
+        all_patches = torch.cat([x_patches, future_gt], dim=2)
+        total_len = all_patches.size(2)
+        dtype = all_patches.dtype
+
+        # unary encode full sequence
+        unary_all = self.unary_factors(all_patches)
+
+        # causal MFVI over full sequence (teacher-forced)
+        ctx = self._causal_enc_ctx(batch_size, num_variates, total_len, device, dtype)
+        z_all = unary_all.clone()
+        for _ in range(self.num_enc_iter):
+            z_all = self.encoder_iterator(unary_all, z_all, **ctx)
+
+        # next-patch prediction: z[t] predicts patch[t+1]
+        # for future output: z at positions [P-1 .. P+F-2] predicts patches [P .. P+F-1]
+        future_z = z_all[:, :, history_len - 1 : history_len + future_len - 1, :]
+        pred_future = self.patch_predictor(future_z)  # [B, N, F, patch_len]
+
+        # assemble denormalized output
+        dec_out = pred_future.reshape(batch_size, num_variates, -1)[:, :, :self.pred_len]
+        dec_out = dec_out.permute(0, 2, 1)
+        dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).expand_as(dec_out)
+        dec_out = dec_out + means[:, 0, :].unsqueeze(1).expand_as(dec_out)
+
+        # --- auxiliary loss: train transition prior ---
+        # transition_prior(z[t]) should approximate z[t+1]
+        z_src = z_all[:, :, :-1, :].detach()   # [B, N, T-1, d]
+        z_tgt = z_all[:, :, 1:, :].detach()     # [B, N, T-1, d]
+        trans_pred = self.transition_prior(z_src)
+        aux_loss = self.lambda_trans * F.mse_loss(trans_pred, z_tgt)
+
+        return dec_out, aux_loss
+
+    # =====================================================================
+    # Inference: strict AR rollout with dual evidence
+    # =====================================================================
+
+    def _forward_inference(self, x, means, stdev, x_patches):
+        device = x.device
+        batch_size = x.size(0)
+        num_variates = self.enc_in
+        history_len = self.patch_num
+        future_len = self.future_patch_num
+        dtype = x_patches.dtype
+
+        # history encoding
         unary_hist = self.unary_factors(x_patches)
-        dtype = unary_hist.dtype
-
         enc_ctx = self._causal_enc_ctx(batch_size, num_variates, history_len, device, dtype)
         z_hist = unary_hist.clone()
         for _ in range(self.num_enc_iter):
             z_hist = self.encoder_iterator(unary_hist, z_hist, **enc_ctx)
 
-        # =================================================================
-        # Phase 2: Future AR decoding (strict AR with dual evidence)
-        # =================================================================
+        # prepare cache
         hist_norm = self.norm(z_hist)
         hist_time_pe = self._time_pe(batch_size * num_variates, history_len, device, dtype)
         cache_v = self.decoder.project_time_values_seq(hist_norm, hist_time_pe)
         channel_mask, channel_pe = self._channel_step_ctx(batch_size, device, dtype)
 
-        z_prev = z_hist[:, :, -1, :]  # [B, N, d]
+        # AR rollout
+        z_prev = z_hist[:, :, -1, :]
         pred_patches = []
-        student_latents = []
 
         for step in range(future_len):
-            # ---- strict AR: predict next patch from current latent ----
-            patch_pred = self.patch_predictor(z_prev)       # [B, N, patch_len]
+            # strict AR: predict patch, feed back
+            patch_pred = self.patch_predictor(z_prev)
             pred_patches.append(patch_pred)
 
-            # ---- dual evidence for MFVI ----
-            # pathway 1: re-encode predicted patch as observation-level unary
-            patch_unary = self.unary_factors(patch_pred)    # [B, N, d_model]
-            # pathway 2: transition prior in latent space
-            trans_unary = self.transition_prior(z_prev)     # [B, N, d_model]
+            # dual evidence
+            patch_unary = self.unary_factors(patch_pred)
+            trans_unary = self.transition_prior(z_prev)
 
-            # ---- single-step MFVI ----
+            # single-step MFVI
             time_pe_now = self._time_step_pe(
                 batch_size * num_variates, history_len + step, device, dtype
             )
@@ -542,56 +543,40 @@ class PtLatentModelV7(nn.Module):
                 num_iter=self.num_dec_iter,
             )
             cache_v = torch.cat([cache_v, new_v], dim=3)
-            student_latents.append(z_new)
             z_prev = z_new
 
-        # =================================================================
-        # Assemble output
-        # =================================================================
-        pred_patches = torch.stack(pred_patches, dim=2)  # [B, N, F, patch_len]
+        # assemble
+        pred_patches = torch.stack(pred_patches, dim=2)
         dec_out = pred_patches.reshape(batch_size, num_variates, -1)[:, :, :self.pred_len]
-        dec_out = dec_out.permute(0, 2, 1)  # [B, pred_len, N]
+        dec_out = dec_out.permute(0, 2, 1)
         dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).expand_as(dec_out)
         dec_out = dec_out + means[:, 0, :].unsqueeze(1).expand_as(dec_out)
-
-        # =================================================================
-        # Phase 3: Teacher (parallel full-sequence causal encoder)
-        # =================================================================
-        if is_training and y_true is not None:
-            y_norm = (y_true - means) / stdev
-            future_gt = self._split_future_patches(y_norm)
-            # [B, N, P+F, patch_len]
-            all_patches = torch.cat([x_patches, future_gt], dim=2)
-            total_len = all_patches.size(2)
-
-            # encode full sequence: unary has gradient so UnaryEncoder learns from GT
-            unary_all = self.unary_factors(all_patches)
-
-            # teacher inference runs the same causal encoder on the full sequence
-            # but we detach the final teacher latents (not the unary computation)
-            teacher_ctx = self._causal_enc_ctx(batch_size, num_variates, total_len, device, dtype)
-            z_all = unary_all.clone()
-            with torch.no_grad():
-                for _ in range(self.num_enc_iter):
-                    z_all = self.encoder_iterator(unary_all, z_all, **teacher_ctx)
-
-            # extract future teacher latents
-            z_teacher = z_all[:, :, history_len:history_len + future_len, :]  # [B, N, F, d]
-
-            # KL loss
-            latent_loss = unary_all.new_zeros(())
-            for t in range(future_len):
-                latent_loss = latent_loss + self._latent_kl(
-                    student_latents[t], z_teacher[:, :, t, :]
-                )
-            latent_loss = self.lambda_latent * (latent_loss / future_len)
-            return dec_out, latent_loss
-
         return dec_out
+
+    # =====================================================================
+    # Entry point
+    # =====================================================================
+
+    def forward(self, time_series, y_true=None, is_training=True):
+        # instance normalization
+        means = time_series.mean(1, keepdim=True).detach()
+        x = time_series - means
+        stdev = torch.sqrt(torch.var(x, dim=1, keepdim=True, unbiased=False) + 1e-5)
+        x = x / stdev
+
+        batch_size = time_series.size(0)
+        x_patches = x.transpose(1, 2).reshape(
+            batch_size, self.enc_in, self.patch_num, self.patch_len
+        )
+
+        if is_training and y_true is not None:
+            return self._forward_train(x, means, stdev, x_patches, y_true)
+        else:
+            return self._forward_inference(x, means, stdev, x_patches)
 
 
 # ---------------------------------------------------------------------------
-# Wrapper (matches the interface expected by run.py / exp_latent_forecast.py)
+# Wrapper
 # ---------------------------------------------------------------------------
 
 class Model(nn.Module):
