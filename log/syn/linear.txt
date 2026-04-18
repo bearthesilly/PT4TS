@@ -1,0 +1,378 @@
+
+========== Lag / DLinear / N=150 ==========
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_N150_dlinearModel:              DLinear             
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.02M
+Model components:
+Linear_Seasonal.weight: 9216 parameters
+Linear_Seasonal.bias: 96 parameters
+Linear_Trend.weight: 9216 parameters
+Linear_Trend.bias: 96 parameters
+
+learnable weight parameters: 18,624
+total parameters: 18,624
+>>>>>>>start training : long_term_forecast_syn_lag_N150_dlinear_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+DLinear training start!
+Epoch: 1 cost time: 2.3694753646850586
+Epoch: 1, Steps: 4 | Train Loss: 0.7456212 Vali Loss: 0.6891714 Test Loss: 0.6319278
+Validation loss decreased (inf --> 0.689171).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.5776863098144531
+Epoch: 2, Steps: 4 | Train Loss: 0.5912929 Vali Loss: 0.5782915 Test Loss: 0.5278261
+Validation loss decreased (0.689171 --> 0.578291).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.6970582008361816
+Epoch: 3, Steps: 4 | Train Loss: 0.5192992 Vali Loss: 0.5390986 Test Loss: 0.4927600
+Validation loss decreased (0.578291 --> 0.539099).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.6071319580078125
+Epoch: 4, Steps: 4 | Train Loss: 0.4852274 Vali Loss: 0.5225254 Test Loss: 0.4781079
+Validation loss decreased (0.539099 --> 0.522525).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.6400866508483887
+Epoch: 5, Steps: 4 | Train Loss: 0.4713584 Vali Loss: 0.5148504 Test Loss: 0.4713600
+Validation loss decreased (0.522525 --> 0.514850).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.6487705707550049
+Epoch: 6, Steps: 4 | Train Loss: 0.4550018 Vali Loss: 0.5111079 Test Loss: 0.4680700
+Validation loss decreased (0.514850 --> 0.511108).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.7211670875549316
+Epoch: 7, Steps: 4 | Train Loss: 0.4662632 Vali Loss: 0.5092496 Test Loss: 0.4664552
+Validation loss decreased (0.511108 --> 0.509250).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.5738773345947266
+Epoch: 8, Steps: 4 | Train Loss: 0.4665051 Vali Loss: 0.5083126 Test Loss: 0.4656496
+Validation loss decreased (0.509250 --> 0.508313).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.5563936233520508
+Epoch: 9, Steps: 4 | Train Loss: 0.4569312 Vali Loss: 0.5078452 Test Loss: 0.4652477
+Validation loss decreased (0.508313 --> 0.507845).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.6229853630065918
+Epoch: 10, Steps: 4 | Train Loss: 0.4588891 Vali Loss: 0.5076125 Test Loss: 0.4650462
+Validation loss decreased (0.507845 --> 0.507613).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_lag_N150_dlinear_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 6) (30, 96, 6)
+test shape: (30, 96, 6) (30, 96, 6)
+Calculating metrics...
+mse:0.4650461971759796, mae:0.47625914216041565, dtw:Not calculated
+Per-sample MSE  | mean: 0.4650  median: 0.4705  std: 0.0693  min: 0.3114  max: 0.5941  sample-0: 0.4856
+
+========== Lag / DLinear / N=1500 ==========
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_N1500_dlinearModel:              DLinear             
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_1500.npy      Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.02M
+Model components:
+Linear_Seasonal.weight: 9216 parameters
+Linear_Seasonal.bias: 96 parameters
+Linear_Trend.weight: 9216 parameters
+Linear_Trend.bias: 96 parameters
+
+learnable weight parameters: 18,624
+total parameters: 18,624
+>>>>>>>start training : long_term_forecast_syn_lag_N1500_dlinear_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 1050
+val 150
+test 300
+DLinear training start!
+Epoch: 1 cost time: 3.6372570991516113
+Epoch: 1, Steps: 33 | Train Loss: 0.4597400 Vali Loss: 0.3043496 Test Loss: 0.3003190
+Validation loss decreased (inf --> 0.304350).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.8823318481445312
+Epoch: 2, Steps: 33 | Train Loss: 0.2528405 Vali Loss: 0.2195767 Test Loss: 0.2163893
+Validation loss decreased (0.304350 --> 0.219577).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.709139108657837
+Epoch: 3, Steps: 33 | Train Loss: 0.2011581 Vali Loss: 0.1919072 Test Loss: 0.1892444
+Validation loss decreased (0.219577 --> 0.191907).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.847050666809082
+Epoch: 4, Steps: 33 | Train Loss: 0.1819112 Vali Loss: 0.1805326 Test Loss: 0.1776168
+Validation loss decreased (0.191907 --> 0.180533).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.751617670059204
+Epoch: 5, Steps: 33 | Train Loss: 0.1731634 Vali Loss: 0.1743294 Test Loss: 0.1719578
+Validation loss decreased (0.180533 --> 0.174329).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.855834722518921
+Epoch: 6, Steps: 33 | Train Loss: 0.1689212 Vali Loss: 0.1721356 Test Loss: 0.1691812
+Validation loss decreased (0.174329 --> 0.172136).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.8028039932250977
+Epoch: 7, Steps: 33 | Train Loss: 0.1667745 Vali Loss: 0.1707579 Test Loss: 0.1677395
+Validation loss decreased (0.172136 --> 0.170758).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.7639570236206055
+Epoch: 8, Steps: 33 | Train Loss: 0.1656670 Vali Loss: 0.1692761 Test Loss: 0.1670079
+Validation loss decreased (0.170758 --> 0.169276).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.9148311614990234
+Epoch: 9, Steps: 33 | Train Loss: 0.1650897 Vali Loss: 0.1691870 Test Loss: 0.1666379
+Validation loss decreased (0.169276 --> 0.169187).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.7951641082763672
+Epoch: 10, Steps: 33 | Train Loss: 0.1648187 Vali Loss: 0.1691906 Test Loss: 0.1664437
+EarlyStopping counter: 1 out of 3
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_lag_N1500_dlinear_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 300
+test shape: (300, 96, 6) (300, 96, 6)
+test shape: (300, 96, 6) (300, 96, 6)
+Calculating metrics...
+mse:0.16658420860767365, mae:0.2414633333683014, dtw:Not calculated
+Per-sample MSE  | mean: 0.1666  median: 0.1662  std: 0.0231  min: 0.1159  max: 0.2193  sample-0: 0.1684
+
+========== Lag / DLinear / N=15000 ==========
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_N15000_dlinearModel:              DLinear             
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_15000.npy     Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.02M
+Model components:
+Linear_Seasonal.weight: 9216 parameters
+Linear_Seasonal.bias: 96 parameters
+Linear_Trend.weight: 9216 parameters
+Linear_Trend.bias: 96 parameters
+
+learnable weight parameters: 18,624
+total parameters: 18,624
+>>>>>>>start training : long_term_forecast_syn_lag_N15000_dlinear_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 10500
+val 1500
+test 3000
+DLinear training start!
+	iters: 100, epoch: 1 | loss: 0.1696502
+	speed: 0.0400s/iter; left time: 127.6551s
+	iters: 200, epoch: 1 | loss: 0.0956229
+	speed: 0.0040s/iter; left time: 12.3275s
+	iters: 300, epoch: 1 | loss: 0.0654374
+	speed: 0.0040s/iter; left time: 11.8971s
+Epoch: 1 cost time: 4.955133676528931
+Epoch: 1, Steps: 329 | Train Loss: 0.1580994 Vali Loss: 0.0597846 Test Loss: 0.0597989
+Validation loss decreased (inf --> 0.059785).  Saving model ...
+Updating learning rate to 0.001
+	iters: 100, epoch: 2 | loss: 0.0454966
+	speed: 0.0583s/iter; left time: 166.8070s
+	iters: 200, epoch: 2 | loss: 0.0396313
+	speed: 0.0039s/iter; left time: 10.7275s
+	iters: 300, epoch: 2 | loss: 0.0343094
+	speed: 0.0034s/iter; left time: 9.1199s
+Epoch: 2 cost time: 2.9092631340026855
+Epoch: 2, Steps: 329 | Train Loss: 0.0428595 Vali Loss: 0.0330609 Test Loss: 0.0331080
+Validation loss decreased (0.059785 --> 0.033061).  Saving model ...
+Updating learning rate to 0.0005
+	iters: 100, epoch: 3 | loss: 0.0300992
+	speed: 0.0588s/iter; left time: 149.0389s
+	iters: 200, epoch: 3 | loss: 0.0299578
+	speed: 0.0039s/iter; left time: 9.4665s
+	iters: 300, epoch: 3 | loss: 0.0299249
+	speed: 0.0039s/iter; left time: 9.1992s
+Epoch: 3 cost time: 2.9438929557800293
+Epoch: 3, Steps: 329 | Train Loss: 0.0308052 Vali Loss: 0.0289215 Test Loss: 0.0289849
+Validation loss decreased (0.033061 --> 0.028922).  Saving model ...
+Updating learning rate to 0.00025
+	iters: 100, epoch: 4 | loss: 0.0292180
+	speed: 0.0612s/iter; left time: 134.9299s
+	iters: 200, epoch: 4 | loss: 0.0287176
+	speed: 0.0040s/iter; left time: 8.4035s
+	iters: 300, epoch: 4 | loss: 0.0276477
+	speed: 0.0039s/iter; left time: 7.8708s
+Epoch: 4 cost time: 2.9126744270324707
+Epoch: 4, Steps: 329 | Train Loss: 0.0282959 Vali Loss: 0.0278091 Test Loss: 0.0277976
+Validation loss decreased (0.028922 --> 0.027809).  Saving model ...
+Updating learning rate to 0.000125
+	iters: 100, epoch: 5 | loss: 0.0279412
+	speed: 0.0597s/iter; left time: 111.9347s
+	iters: 200, epoch: 5 | loss: 0.0279994
+	speed: 0.0039s/iter; left time: 7.0029s
+	iters: 300, epoch: 5 | loss: 0.0272857
+	speed: 0.0039s/iter; left time: 6.4944s
+Epoch: 5 cost time: 3.017925500869751
+Epoch: 5, Steps: 329 | Train Loss: 0.0273495 Vali Loss: 0.0271019 Test Loss: 0.0271171
+Validation loss decreased (0.027809 --> 0.027102).  Saving model ...
+Updating learning rate to 6.25e-05
+	iters: 100, epoch: 6 | loss: 0.0275310
+	speed: 0.0587s/iter; left time: 90.7906s
+	iters: 200, epoch: 6 | loss: 0.0269171
+	speed: 0.0041s/iter; left time: 5.8586s
+	iters: 300, epoch: 6 | loss: 0.0270993
+	speed: 0.0041s/iter; left time: 5.5467s
+Epoch: 6 cost time: 2.958190679550171
+Epoch: 6, Steps: 329 | Train Loss: 0.0269286 Vali Loss: 0.0268045 Test Loss: 0.0268285
+Validation loss decreased (0.027102 --> 0.026805).  Saving model ...
+Updating learning rate to 3.125e-05
+	iters: 100, epoch: 7 | loss: 0.0262636
+	speed: 0.0604s/iter; left time: 73.4961s
+	iters: 200, epoch: 7 | loss: 0.0268253
+	speed: 0.0039s/iter; left time: 4.3385s
+	iters: 300, epoch: 7 | loss: 0.0259403
+	speed: 0.0040s/iter; left time: 4.0178s
+Epoch: 7 cost time: 3.1113131046295166
+Epoch: 7, Steps: 329 | Train Loss: 0.0267092 Vali Loss: 0.0266828 Test Loss: 0.0266814
+Validation loss decreased (0.026805 --> 0.026683).  Saving model ...
+Updating learning rate to 1.5625e-05
+	iters: 100, epoch: 8 | loss: 0.0264250
+	speed: 0.0593s/iter; left time: 52.6500s
+	iters: 200, epoch: 8 | loss: 0.0274748
+	speed: 0.0040s/iter; left time: 3.1453s
+	iters: 300, epoch: 8 | loss: 0.0255234
+	speed: 0.0040s/iter; left time: 2.7249s
+Epoch: 8 cost time: 3.0495359897613525
+Epoch: 8, Steps: 329 | Train Loss: 0.0266010 Vali Loss: 0.0265945 Test Loss: 0.0266128
+Validation loss decreased (0.026683 --> 0.026595).  Saving model ...
+Updating learning rate to 7.8125e-06
+	iters: 100, epoch: 9 | loss: 0.0275624
+	speed: 0.0596s/iter; left time: 33.3403s
+	iters: 200, epoch: 9 | loss: 0.0259212
+	speed: 0.0039s/iter; left time: 1.8120s
+	iters: 300, epoch: 9 | loss: 0.0266727
+	speed: 0.0040s/iter; left time: 1.4413s
+Epoch: 9 cost time: 2.9236366748809814
+Epoch: 9, Steps: 329 | Train Loss: 0.0265379 Vali Loss: 0.0265593 Test Loss: 0.0265790
+Validation loss decreased (0.026595 --> 0.026559).  Saving model ...
+Updating learning rate to 3.90625e-06
+	iters: 100, epoch: 10 | loss: 0.0281061
+	speed: 0.0596s/iter; left time: 13.7175s
+	iters: 200, epoch: 10 | loss: 0.0264162
+	speed: 0.0040s/iter; left time: 0.5177s
+	iters: 300, epoch: 10 | loss: 0.0262065
+	speed: 0.0040s/iter; left time: 0.1214s
+Epoch: 10 cost time: 2.9891529083251953
+Epoch: 10, Steps: 329 | Train Loss: 0.0265001 Vali Loss: 0.0265402 Test Loss: 0.0265553
+Validation loss decreased (0.026559 --> 0.026540).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_lag_N15000_dlinear_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 3000
+test shape: (3000, 96, 6) (3000, 96, 6)
+test shape: (3000, 96, 6) (3000, 96, 6)
+Calculating metrics...
+mse:0.026553671807050705, mae:0.11908255517482758, dtw:Not calculated
+Per-sample MSE  | mean: 0.0266  median: 0.0263  std: 0.0040  min: 0.0180  max: 0.0453  sample-0: 0.0257

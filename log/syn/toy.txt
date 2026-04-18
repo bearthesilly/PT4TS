@@ -1,0 +1,1177 @@
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_trend_150_experimentModel:              PT_syn_trend        
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          trend_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 1.29M
+Model components:
+model.iterator.head_selection.ternary_factor_u_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_u_channel: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_channel: 4096 parameters
+model.iterator.topic_modeling.binary_factor: 8192 parameters
+model.iterator.explicit_hmm.binary_potential_table: 40960 parameters
+model.iterator.explicit_hmm.markovian_potential: 40960 parameters
+model.prediction.weight: 589824 parameters
+model.prediction.bias: 96 parameters
+model.prediction_trend.weight: 589824 parameters
+model.prediction_trend.bias: 96 parameters
+model.unary_factors.0.weight: 64 parameters
+model.unary_factors.0.bias: 64 parameters
+model.unary_factors.2.weight: 4096 parameters
+model.unary_factors.2.bias: 64 parameters
+
+learnable weight parameters: 1,290,624
+total parameters: 1,290,624
+>>>>>>>start training : long_term_forecast_syn_trend_150_experiment_PT_syn_trend_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+PT_syn_trend training start!
+Epoch: 1 cost time: 3.1003363132476807
+Epoch: 1, Steps: 4 | Train Loss: 1.8538813 Vali Loss: 1.3860739 Test Loss: 1.3354818
+Validation loss decreased (inf --> 1.386074).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.855419635772705
+Epoch: 2, Steps: 4 | Train Loss: 1.0340460 Vali Loss: 0.8373355 Test Loss: 0.7793165
+Validation loss decreased (1.386074 --> 0.837336).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.8872008323669434
+Epoch: 3, Steps: 4 | Train Loss: 0.7020889 Vali Loss: 0.6690022 Test Loss: 0.6220886
+Validation loss decreased (0.837336 --> 0.669002).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.8970420360565186
+Epoch: 4, Steps: 4 | Train Loss: 0.5962426 Vali Loss: 0.6157361 Test Loss: 0.5755265
+Validation loss decreased (0.669002 --> 0.615736).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.699812412261963
+Epoch: 5, Steps: 4 | Train Loss: 0.5544278 Vali Loss: 0.5876347 Test Loss: 0.5496763
+Validation loss decreased (0.615736 --> 0.587635).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.8200080394744873
+Epoch: 6, Steps: 4 | Train Loss: 0.5425360 Vali Loss: 0.5704582 Test Loss: 0.5331557
+Validation loss decreased (0.587635 --> 0.570458).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.73746657371521
+Epoch: 7, Steps: 4 | Train Loss: 0.5166650 Vali Loss: 0.5615305 Test Loss: 0.5244156
+Validation loss decreased (0.570458 --> 0.561530).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.8368895053863525
+Epoch: 8, Steps: 4 | Train Loss: 0.5058668 Vali Loss: 0.5571294 Test Loss: 0.5200775
+Validation loss decreased (0.561530 --> 0.557129).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.8650171756744385
+Epoch: 9, Steps: 4 | Train Loss: 0.5010260 Vali Loss: 0.5549603 Test Loss: 0.5179359
+Validation loss decreased (0.557129 --> 0.554960).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.8518719673156738
+Epoch: 10, Steps: 4 | Train Loss: 0.5135102 Vali Loss: 0.5538763 Test Loss: 0.5168648
+Validation loss decreased (0.554960 --> 0.553876).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_trend_150_experiment_PT_syn_trend_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:0.5168647766113281, mae:0.5082294940948486, dtw:Not calculated
+Per-sample MSE  | mean: 0.5169  median: 0.5014  std: 0.0875  min: 0.3471  max: 0.6971  sample-0: 0.6115
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_trend_150_experimentModel:              PT_forecast_v15     
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          trend_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.62M
+Model components:
+model.iterator.head_selection.ternary_factor_u_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_u_channel: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_channel: 4096 parameters
+model.iterator.topic_modeling.binary_factor: 8192 parameters
+model.prediction.weight: 589824 parameters
+model.prediction.bias: 96 parameters
+model.unary_factors.0.weight: 64 parameters
+model.unary_factors.0.bias: 64 parameters
+model.unary_factors.2.weight: 4096 parameters
+model.unary_factors.2.bias: 64 parameters
+
+learnable weight parameters: 618,784
+total parameters: 618,784
+>>>>>>>start training : long_term_forecast_syn_trend_150_experiment_PT_forecast_v15_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+PT_forecast_v15 training start!
+Epoch: 1 cost time: 2.6695659160614014
+Epoch: 1, Steps: 4 | Train Loss: 1.8429719 Vali Loss: 1.4491652 Test Loss: 1.3963752
+Validation loss decreased (inf --> 1.449165).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.8821327686309814
+Epoch: 2, Steps: 4 | Train Loss: 1.0725165 Vali Loss: 0.8986245 Test Loss: 0.8388796
+Validation loss decreased (1.449165 --> 0.898625).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.8243298530578613
+Epoch: 3, Steps: 4 | Train Loss: 0.7849253 Vali Loss: 0.7408280 Test Loss: 0.6903982
+Validation loss decreased (0.898625 --> 0.740828).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.9003655910491943
+Epoch: 4, Steps: 4 | Train Loss: 0.6588949 Vali Loss: 0.6742498 Test Loss: 0.6310732
+Validation loss decreased (0.740828 --> 0.674250).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.8991456031799316
+Epoch: 5, Steps: 4 | Train Loss: 0.5959944 Vali Loss: 0.6415516 Test Loss: 0.6013595
+Validation loss decreased (0.674250 --> 0.641552).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.7474157810211182
+Epoch: 6, Steps: 4 | Train Loss: 0.5923729 Vali Loss: 0.6210850 Test Loss: 0.5819771
+Validation loss decreased (0.641552 --> 0.621085).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.9549903869628906
+Epoch: 7, Steps: 4 | Train Loss: 0.5571155 Vali Loss: 0.6099476 Test Loss: 0.5712599
+Validation loss decreased (0.621085 --> 0.609948).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.7724525928497314
+Epoch: 8, Steps: 4 | Train Loss: 0.5521027 Vali Loss: 0.6042757 Test Loss: 0.5657670
+Validation loss decreased (0.609948 --> 0.604276).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.9213793277740479
+Epoch: 9, Steps: 4 | Train Loss: 0.5493623 Vali Loss: 0.6014222 Test Loss: 0.5629953
+Validation loss decreased (0.604276 --> 0.601422).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.890009880065918
+Epoch: 10, Steps: 4 | Train Loss: 0.5554323 Vali Loss: 0.5999835 Test Loss: 0.5615977
+Validation loss decreased (0.601422 --> 0.599983).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_trend_150_experiment_PT_forecast_v15_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:0.5615977048873901, mae:0.5324110984802246, dtw:Not calculated
+Per-sample MSE  | mean: 0.5616  median: 0.5536  std: 0.0929  min: 0.3742  max: 0.7593  sample-0: 0.6694
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_trend_150_experimentModel:              DLinear             
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          trend_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.02M
+Model components:
+Linear_Seasonal.weight: 9216 parameters
+Linear_Seasonal.bias: 96 parameters
+Linear_Trend.weight: 9216 parameters
+Linear_Trend.bias: 96 parameters
+
+learnable weight parameters: 18,624
+total parameters: 18,624
+>>>>>>>start training : long_term_forecast_syn_trend_150_experiment_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+DLinear training start!
+Epoch: 1 cost time: 2.4630722999572754
+Epoch: 1, Steps: 4 | Train Loss: 2.4793195 Vali Loss: 2.1682265 Test Loss: 2.0276930
+Validation loss decreased (inf --> 2.168226).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.7724132537841797
+Epoch: 2, Steps: 4 | Train Loss: 1.7011600 Vali Loss: 1.5000658 Test Loss: 1.3728266
+Validation loss decreased (2.168226 --> 1.500066).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.731149435043335
+Epoch: 3, Steps: 4 | Train Loss: 1.2092414 Vali Loss: 1.2380226 Test Loss: 1.1203454
+Validation loss decreased (1.500066 --> 1.238023).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.6846137046813965
+Epoch: 4, Steps: 4 | Train Loss: 1.0235364 Vali Loss: 1.1253200 Test Loss: 1.0127703
+Validation loss decreased (1.238023 --> 1.125320).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.5929670333862305
+Epoch: 5, Steps: 4 | Train Loss: 0.9580047 Vali Loss: 1.0736510 Test Loss: 0.9636738
+Validation loss decreased (1.125320 --> 1.073651).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.638012409210205
+Epoch: 6, Steps: 4 | Train Loss: 0.9153929 Vali Loss: 1.0490222 Test Loss: 0.9403198
+Validation loss decreased (1.073651 --> 1.049022).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.7486681938171387
+Epoch: 7, Steps: 4 | Train Loss: 0.8882535 Vali Loss: 1.0370239 Test Loss: 0.9289498
+Validation loss decreased (1.049022 --> 1.037024).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.6860442161560059
+Epoch: 8, Steps: 4 | Train Loss: 0.8534579 Vali Loss: 1.0311164 Test Loss: 0.9233517
+Validation loss decreased (1.037024 --> 1.031116).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.7269158363342285
+Epoch: 9, Steps: 4 | Train Loss: 0.8724792 Vali Loss: 1.0281910 Test Loss: 0.9205787
+Validation loss decreased (1.031116 --> 1.028191).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.6852920055389404
+Epoch: 10, Steps: 4 | Train Loss: 0.8626992 Vali Loss: 1.0267273 Test Loss: 0.9191911
+Validation loss decreased (1.028191 --> 1.026727).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_trend_150_experiment_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:0.9191910624504089, mae:0.7628509402275085, dtw:Not calculated
+Per-sample MSE  | mean: 0.9192  median: 0.9314  std: 0.2393  min: 0.5517  max: 1.4996  sample-0: 1.1336
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_trend_150_experimentModel:              BVAR                
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          trend_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.00M
+Model components:
+
+learnable weight parameters: 0
+total parameters: 1
+>>>>>>>start training : long_term_forecast_syn_trend_150_experiment_BVAR_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+BVAR training start!
+Epoch: 1 cost time: 3.273446559906006
+Epoch: 1, Steps: 4 | Train Loss: 1.8652414 Vali Loss: 2.0423803 Test Loss: 1.9084868
+Validation loss decreased (inf --> 2.042380).  Saving model ...
+Updating learning rate to 0.001
+>>>>>>>testing : long_term_forecast_syn_trend_150_experiment_BVAR_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:1.9084868431091309, mae:1.1671026945114136, dtw:Not calculated
+Per-sample MSE  | mean: 1.9085  median: 1.9178  std: 0.2251  min: 1.5339  max: 2.4505  sample-0: 2.1048
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_period_150_experimentModel:              PT_syn_period       
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          periodicity_150.npy Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.62M
+Model components:
+model.iterator.head_selection.ternary_factor_u_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_u_channel: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_channel: 4096 parameters
+model.iterator.topic_modeling.binary_factor: 8192 parameters
+model.prediction.weight: 589824 parameters
+model.prediction.bias: 96 parameters
+model.unary_factors.0.weight: 64 parameters
+model.unary_factors.0.bias: 64 parameters
+model.unary_factors.2.weight: 4096 parameters
+model.unary_factors.2.bias: 64 parameters
+
+learnable weight parameters: 618,784
+total parameters: 618,784
+>>>>>>>start training : long_term_forecast_syn_period_150_experiment_PT_syn_period_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+PT_syn_period training start!
+Epoch: 1 cost time: 2.7382466793060303
+Epoch: 1, Steps: 4 | Train Loss: 0.6562658 Vali Loss: 0.4560238 Test Loss: 0.4296435
+Validation loss decreased (inf --> 0.456024).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 2.137892246246338
+Epoch: 2, Steps: 4 | Train Loss: 0.3348598 Vali Loss: 0.3087295 Test Loss: 0.2729337
+Validation loss decreased (0.456024 --> 0.308729).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.8755452632904053
+Epoch: 3, Steps: 4 | Train Loss: 0.2434502 Vali Loss: 0.2896372 Test Loss: 0.2570961
+Validation loss decreased (0.308729 --> 0.289637).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 2.0099878311157227
+Epoch: 4, Steps: 4 | Train Loss: 0.2267398 Vali Loss: 0.2750370 Test Loss: 0.2415658
+Validation loss decreased (0.289637 --> 0.275037).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 2.0265207290649414
+Epoch: 5, Steps: 4 | Train Loss: 0.2132100 Vali Loss: 0.2680601 Test Loss: 0.2332878
+Validation loss decreased (0.275037 --> 0.268060).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 2.118557929992676
+Epoch: 6, Steps: 4 | Train Loss: 0.2015572 Vali Loss: 0.2664447 Test Loss: 0.2305474
+Validation loss decreased (0.268060 --> 0.266445).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.8074049949645996
+Epoch: 7, Steps: 4 | Train Loss: 0.2019562 Vali Loss: 0.2657759 Test Loss: 0.2294293
+Validation loss decreased (0.266445 --> 0.265776).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 2.0392062664031982
+Epoch: 8, Steps: 4 | Train Loss: 0.2019487 Vali Loss: 0.2653848 Test Loss: 0.2288581
+Validation loss decreased (0.265776 --> 0.265385).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.965825080871582
+Epoch: 9, Steps: 4 | Train Loss: 0.2035228 Vali Loss: 0.2651769 Test Loss: 0.2285778
+Validation loss decreased (0.265385 --> 0.265177).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 2.0285069942474365
+Epoch: 10, Steps: 4 | Train Loss: 0.1996960 Vali Loss: 0.2650609 Test Loss: 0.2284378
+Validation loss decreased (0.265177 --> 0.265061).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_period_150_experiment_PT_syn_period_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:0.22843775153160095, mae:0.28256866335868835, dtw:Not calculated
+Per-sample MSE  | mean: 0.2284  median: 0.2080  std: 0.0561  min: 0.1564  max: 0.3699  sample-0: 0.2027
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_period_150_experimentModel:              PT_forecast_v15     
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          periodicity_150.npy Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.62M
+Model components:
+model.iterator.head_selection.ternary_factor_u_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_u_channel: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_channel: 4096 parameters
+model.iterator.topic_modeling.binary_factor: 8192 parameters
+model.prediction.weight: 589824 parameters
+model.prediction.bias: 96 parameters
+model.unary_factors.0.weight: 64 parameters
+model.unary_factors.0.bias: 64 parameters
+model.unary_factors.2.weight: 4096 parameters
+model.unary_factors.2.bias: 64 parameters
+
+learnable weight parameters: 618,784
+total parameters: 618,784
+>>>>>>>start training : long_term_forecast_syn_period_150_experiment_PT_forecast_v15_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+PT_forecast_v15 training start!
+Epoch: 1 cost time: 2.81864595413208
+Epoch: 1, Steps: 4 | Train Loss: 0.6526647 Vali Loss: 0.4469362 Test Loss: 0.4192546
+Validation loss decreased (inf --> 0.446936).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.8954594135284424
+Epoch: 2, Steps: 4 | Train Loss: 0.3535201 Vali Loss: 0.2890711 Test Loss: 0.2652722
+Validation loss decreased (0.446936 --> 0.289071).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.7810161113739014
+Epoch: 3, Steps: 4 | Train Loss: 0.2499792 Vali Loss: 0.2800466 Test Loss: 0.2619997
+Validation loss decreased (0.289071 --> 0.280047).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.8837862014770508
+Epoch: 4, Steps: 4 | Train Loss: 0.2450144 Vali Loss: 0.2686898 Test Loss: 0.2499901
+Validation loss decreased (0.280047 --> 0.268690).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.933851957321167
+Epoch: 5, Steps: 4 | Train Loss: 0.2348842 Vali Loss: 0.2621870 Test Loss: 0.2418194
+Validation loss decreased (0.268690 --> 0.262187).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.8707795143127441
+Epoch: 6, Steps: 4 | Train Loss: 0.2214652 Vali Loss: 0.2596591 Test Loss: 0.2382076
+Validation loss decreased (0.262187 --> 0.259659).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.8514916896820068
+Epoch: 7, Steps: 4 | Train Loss: 0.2226482 Vali Loss: 0.2586219 Test Loss: 0.2366962
+Validation loss decreased (0.259659 --> 0.258622).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.9342577457427979
+Epoch: 8, Steps: 4 | Train Loss: 0.2235155 Vali Loss: 0.2581171 Test Loss: 0.2360180
+Validation loss decreased (0.258622 --> 0.258117).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.7933354377746582
+Epoch: 9, Steps: 4 | Train Loss: 0.2241798 Vali Loss: 0.2578682 Test Loss: 0.2357036
+Validation loss decreased (0.258117 --> 0.257868).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.9707612991333008
+Epoch: 10, Steps: 4 | Train Loss: 0.2196126 Vali Loss: 0.2577399 Test Loss: 0.2355531
+Validation loss decreased (0.257868 --> 0.257740).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_period_150_experiment_PT_forecast_v15_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:0.23555314540863037, mae:0.2884174883365631, dtw:Not calculated
+Per-sample MSE  | mean: 0.2356  median: 0.2141  std: 0.0579  min: 0.1655  max: 0.3930  sample-0: 0.2049
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_period_150_experimentModel:              DLinear             
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          periodicity_150.npy Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.02M
+Model components:
+Linear_Seasonal.weight: 9216 parameters
+Linear_Seasonal.bias: 96 parameters
+Linear_Trend.weight: 9216 parameters
+Linear_Trend.bias: 96 parameters
+
+learnable weight parameters: 18,624
+total parameters: 18,624
+>>>>>>>start training : long_term_forecast_syn_period_150_experiment_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+DLinear training start!
+Epoch: 1 cost time: 2.5313546657562256
+Epoch: 1, Steps: 4 | Train Loss: 0.9285509 Vali Loss: 0.8041663 Test Loss: 0.7790982
+Validation loss decreased (inf --> 0.804166).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.6561660766601562
+Epoch: 2, Steps: 4 | Train Loss: 0.6997467 Vali Loss: 0.6125861 Test Loss: 0.5865382
+Validation loss decreased (0.804166 --> 0.612586).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.692406177520752
+Epoch: 3, Steps: 4 | Train Loss: 0.5552367 Vali Loss: 0.5394791 Test Loss: 0.5130723
+Validation loss decreased (0.612586 --> 0.539479).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.81583833694458
+Epoch: 4, Steps: 4 | Train Loss: 0.4998636 Vali Loss: 0.5083839 Test Loss: 0.4818277
+Validation loss decreased (0.539479 --> 0.508384).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.5166115760803223
+Epoch: 5, Steps: 4 | Train Loss: 0.4750236 Vali Loss: 0.4941527 Test Loss: 0.4675467
+Validation loss decreased (0.508384 --> 0.494153).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.617851972579956
+Epoch: 6, Steps: 4 | Train Loss: 0.4638877 Vali Loss: 0.4874040 Test Loss: 0.4607842
+Validation loss decreased (0.494153 --> 0.487404).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.6771323680877686
+Epoch: 7, Steps: 4 | Train Loss: 0.4592420 Vali Loss: 0.4841169 Test Loss: 0.4574901
+Validation loss decreased (0.487404 --> 0.484117).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.708676815032959
+Epoch: 8, Steps: 4 | Train Loss: 0.4546261 Vali Loss: 0.4824953 Test Loss: 0.4558642
+Validation loss decreased (0.484117 --> 0.482495).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.6781604290008545
+Epoch: 9, Steps: 4 | Train Loss: 0.4541369 Vali Loss: 0.4816850 Test Loss: 0.4550546
+Validation loss decreased (0.482495 --> 0.481685).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.5912723541259766
+Epoch: 10, Steps: 4 | Train Loss: 0.4476450 Vali Loss: 0.4812788 Test Loss: 0.4546480
+Validation loss decreased (0.481685 --> 0.481279).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_period_150_experiment_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:0.45464807748794556, mae:0.5455943942070007, dtw:Not calculated
+Per-sample MSE  | mean: 0.4546  median: 0.4432  std: 0.0445  min: 0.4030  max: 0.5759  sample-0: 0.4510
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_period_150_experimentModel:              BVAR                
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          periodicity_150.npy Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             10                  Dec In:             10                  
+  C Out:              10                  d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.00M
+Model components:
+
+learnable weight parameters: 0
+total parameters: 1
+>>>>>>>start training : long_term_forecast_syn_period_150_experiment_BVAR_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+BVAR training start!
+Epoch: 1 cost time: 2.9039876461029053
+Epoch: 1, Steps: 4 | Train Loss: 1.0761295 Vali Loss: 1.1114002 Test Loss: 1.0761733
+Validation loss decreased (inf --> 1.111400).  Saving model ...
+Updating learning rate to 0.001
+>>>>>>>testing : long_term_forecast_syn_period_150_experiment_BVAR_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 10) (30, 96, 10)
+test shape: (30, 96, 10) (30, 96, 10)
+Calculating metrics...
+mse:1.076173186302185, mae:0.8638885617256165, dtw:Not calculated
+Per-sample MSE  | mean: 1.0762  median: 1.0502  std: 0.0702  min: 0.9905  max: 1.2742  sample-0: 1.0635
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_150_experimentModel:              PT_syn_lag          
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.63M
+Model components:
+model.iterator.head_selection.ternary_factor_u_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_u_channel: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_channel: 4096 parameters
+model.iterator.topic_modeling.binary_factor: 8192 parameters
+model.iterator.lag_prior.W.0: 4096 parameters
+model.iterator.lag_prior.W.1: 4096 parameters
+model.iterator.lag_prior.W.2: 4096 parameters
+model.prediction.weight: 589824 parameters
+model.prediction.bias: 96 parameters
+model.unary_factors.0.weight: 64 parameters
+model.unary_factors.0.bias: 64 parameters
+model.unary_factors.2.weight: 4096 parameters
+model.unary_factors.2.bias: 64 parameters
+
+learnable weight parameters: 631,072
+total parameters: 631,072
+>>>>>>>start training : long_term_forecast_syn_lag_150_experiment_PT_syn_lag_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+PT_syn_lag training start!
+Epoch: 1 cost time: 4.761078357696533
+Epoch: 1, Steps: 4 | Train Loss: 0.7216226 Vali Loss: 0.5248653 Test Loss: 0.5142669
+Validation loss decreased (inf --> 0.524865).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 3.698585033416748
+Epoch: 2, Steps: 4 | Train Loss: 0.4012997 Vali Loss: 0.3755271 Test Loss: 0.3599701
+Validation loss decreased (0.524865 --> 0.375527).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 3.5369791984558105
+Epoch: 3, Steps: 4 | Train Loss: 0.3009446 Vali Loss: 0.2943373 Test Loss: 0.2791329
+Validation loss decreased (0.375527 --> 0.294337).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 3.710026502609253
+Epoch: 4, Steps: 4 | Train Loss: 0.2367556 Vali Loss: 0.2579300 Test Loss: 0.2489433
+Validation loss decreased (0.294337 --> 0.257930).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 3.786005735397339
+Epoch: 5, Steps: 4 | Train Loss: 0.2096385 Vali Loss: 0.2403608 Test Loss: 0.2326540
+Validation loss decreased (0.257930 --> 0.240361).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 3.833620309829712
+Epoch: 6, Steps: 4 | Train Loss: 0.1955684 Vali Loss: 0.2325662 Test Loss: 0.2251942
+Validation loss decreased (0.240361 --> 0.232566).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 3.850856304168701
+Epoch: 7, Steps: 4 | Train Loss: 0.1876947 Vali Loss: 0.2288958 Test Loss: 0.2217481
+Validation loss decreased (0.232566 --> 0.228896).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 3.7486371994018555
+Epoch: 8, Steps: 4 | Train Loss: 0.1823515 Vali Loss: 0.2270654 Test Loss: 0.2201476
+Validation loss decreased (0.228896 --> 0.227065).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 3.883213758468628
+Epoch: 9, Steps: 4 | Train Loss: 0.1791521 Vali Loss: 0.2261715 Test Loss: 0.2193561
+Validation loss decreased (0.227065 --> 0.226171).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 3.876849412918091
+Epoch: 10, Steps: 4 | Train Loss: 0.1833077 Vali Loss: 0.2257286 Test Loss: 0.2189707
+Validation loss decreased (0.226171 --> 0.225729).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_lag_150_experiment_PT_syn_lag_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 6) (30, 96, 6)
+test shape: (30, 96, 6) (30, 96, 6)
+Calculating metrics...
+mse:0.21897073090076447, mae:0.2543981671333313, dtw:Not calculated
+Per-sample MSE  | mean: 0.2190  median: 0.2143  std: 0.0427  min: 0.1537  max: 0.3234  sample-0: 0.2818
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_150_experimentModel:              PT_forecast_v15     
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.62M
+Model components:
+model.iterator.head_selection.ternary_factor_u_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_time: 4096 parameters
+model.iterator.head_selection.ternary_factor_u_channel: 4096 parameters
+model.iterator.head_selection.ternary_factor_v_channel: 4096 parameters
+model.iterator.topic_modeling.binary_factor: 8192 parameters
+model.prediction.weight: 589824 parameters
+model.prediction.bias: 96 parameters
+model.unary_factors.0.weight: 64 parameters
+model.unary_factors.0.bias: 64 parameters
+model.unary_factors.2.weight: 4096 parameters
+model.unary_factors.2.bias: 64 parameters
+
+learnable weight parameters: 618,784
+total parameters: 618,784
+>>>>>>>start training : long_term_forecast_syn_lag_150_experiment_PT_forecast_v15_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+PT_forecast_v15 training start!
+Epoch: 1 cost time: 2.7553226947784424
+Epoch: 1, Steps: 4 | Train Loss: 0.6175804 Vali Loss: 0.4976725 Test Loss: 0.4798381
+Validation loss decreased (inf --> 0.497672).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.8835368156433105
+Epoch: 2, Steps: 4 | Train Loss: 0.3868520 Vali Loss: 0.3715596 Test Loss: 0.3593931
+Validation loss decreased (0.497672 --> 0.371560).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.8049895763397217
+Epoch: 3, Steps: 4 | Train Loss: 0.3149487 Vali Loss: 0.3170436 Test Loss: 0.3077731
+Validation loss decreased (0.371560 --> 0.317044).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.8689911365509033
+Epoch: 4, Steps: 4 | Train Loss: 0.2628306 Vali Loss: 0.2886798 Test Loss: 0.2825503
+Validation loss decreased (0.317044 --> 0.288680).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.8115513324737549
+Epoch: 5, Steps: 4 | Train Loss: 0.2434766 Vali Loss: 0.2768912 Test Loss: 0.2722466
+Validation loss decreased (0.288680 --> 0.276891).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.8370864391326904
+Epoch: 6, Steps: 4 | Train Loss: 0.2336684 Vali Loss: 0.2711176 Test Loss: 0.2671016
+Validation loss decreased (0.276891 --> 0.271118).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.9091715812683105
+Epoch: 7, Steps: 4 | Train Loss: 0.2258987 Vali Loss: 0.2680949 Test Loss: 0.2643458
+Validation loss decreased (0.271118 --> 0.268095).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.726696252822876
+Epoch: 8, Steps: 4 | Train Loss: 0.2279072 Vali Loss: 0.2664854 Test Loss: 0.2628474
+Validation loss decreased (0.268095 --> 0.266485).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.9053244590759277
+Epoch: 9, Steps: 4 | Train Loss: 0.2210102 Vali Loss: 0.2656195 Test Loss: 0.2620433
+Validation loss decreased (0.266485 --> 0.265619).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.807220220565796
+Epoch: 10, Steps: 4 | Train Loss: 0.2226980 Vali Loss: 0.2651783 Test Loss: 0.2616122
+Validation loss decreased (0.265619 --> 0.265178).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_lag_150_experiment_PT_forecast_v15_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 6) (30, 96, 6)
+test shape: (30, 96, 6) (30, 96, 6)
+Calculating metrics...
+mse:0.2616121768951416, mae:0.3139175474643707, dtw:Not calculated
+Per-sample MSE  | mean: 0.2616  median: 0.2534  std: 0.0525  min: 0.1654  max: 0.3710  sample-0: 0.3457
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_150_experimentModel:              DLinear             
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.02M
+Model components:
+Linear_Seasonal.weight: 9216 parameters
+Linear_Seasonal.bias: 96 parameters
+Linear_Trend.weight: 9216 parameters
+Linear_Trend.bias: 96 parameters
+
+learnable weight parameters: 18,624
+total parameters: 18,624
+>>>>>>>start training : long_term_forecast_syn_lag_150_experiment_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+DLinear training start!
+Epoch: 1 cost time: 2.3472278118133545
+Epoch: 1, Steps: 4 | Train Loss: 0.7456212 Vali Loss: 0.6891714 Test Loss: 0.6319278
+Validation loss decreased (inf --> 0.689171).  Saving model ...
+Updating learning rate to 0.001
+Epoch: 2 cost time: 1.5609688758850098
+Epoch: 2, Steps: 4 | Train Loss: 0.5912929 Vali Loss: 0.5782915 Test Loss: 0.5278261
+Validation loss decreased (0.689171 --> 0.578291).  Saving model ...
+Updating learning rate to 0.0005
+Epoch: 3 cost time: 1.8080024719238281
+Epoch: 3, Steps: 4 | Train Loss: 0.5192992 Vali Loss: 0.5390986 Test Loss: 0.4927600
+Validation loss decreased (0.578291 --> 0.539099).  Saving model ...
+Updating learning rate to 0.00025
+Epoch: 4 cost time: 1.6416034698486328
+Epoch: 4, Steps: 4 | Train Loss: 0.4852274 Vali Loss: 0.5225254 Test Loss: 0.4781079
+Validation loss decreased (0.539099 --> 0.522525).  Saving model ...
+Updating learning rate to 0.000125
+Epoch: 5 cost time: 1.5735068321228027
+Epoch: 5, Steps: 4 | Train Loss: 0.4713584 Vali Loss: 0.5148504 Test Loss: 0.4713600
+Validation loss decreased (0.522525 --> 0.514850).  Saving model ...
+Updating learning rate to 6.25e-05
+Epoch: 6 cost time: 1.6761674880981445
+Epoch: 6, Steps: 4 | Train Loss: 0.4550018 Vali Loss: 0.5111079 Test Loss: 0.4680700
+Validation loss decreased (0.514850 --> 0.511108).  Saving model ...
+Updating learning rate to 3.125e-05
+Epoch: 7 cost time: 1.6343214511871338
+Epoch: 7, Steps: 4 | Train Loss: 0.4662632 Vali Loss: 0.5092496 Test Loss: 0.4664552
+Validation loss decreased (0.511108 --> 0.509250).  Saving model ...
+Updating learning rate to 1.5625e-05
+Epoch: 8 cost time: 1.5889596939086914
+Epoch: 8, Steps: 4 | Train Loss: 0.4665051 Vali Loss: 0.5083126 Test Loss: 0.4656496
+Validation loss decreased (0.509250 --> 0.508313).  Saving model ...
+Updating learning rate to 7.8125e-06
+Epoch: 9 cost time: 1.7225697040557861
+Epoch: 9, Steps: 4 | Train Loss: 0.4569312 Vali Loss: 0.5078452 Test Loss: 0.4652477
+Validation loss decreased (0.508313 --> 0.507845).  Saving model ...
+Updating learning rate to 3.90625e-06
+Epoch: 10 cost time: 1.743694543838501
+Epoch: 10, Steps: 4 | Train Loss: 0.4588891 Vali Loss: 0.5076125 Test Loss: 0.4650462
+Validation loss decreased (0.507845 --> 0.507613).  Saving model ...
+Updating learning rate to 1.953125e-06
+>>>>>>>testing : long_term_forecast_syn_lag_150_experiment_DLinear_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 6) (30, 96, 6)
+test shape: (30, 96, 6) (30, 96, 6)
+Calculating metrics...
+mse:0.4650461971759796, mae:0.47625914216041565, dtw:Not calculated
+Per-sample MSE  | mean: 0.4650  median: 0.4705  std: 0.0693  min: 0.3114  max: 0.5941  sample-0: 0.4856
+Using GPU
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           syn_lag_150_experimentModel:              BVAR                
+
+[1mData Loader[0m
+  Data:               toy                 Root Path:          ./dataset/syn_data/ 
+  Data Path:          lag_8_150.npy       Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          48                  
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             6                   Dec In:             6                   
+  C Out:              6                   d model:            64                  
+  n heads:            1                   e layers:           2                   
+  d layers:           1                   d FF:               128                 
+  Moving Avg:         25                  Factor:             3                   
+  Distil:             1                   Dropout:            0.1                 
+  Embed:              timeF               Activation:         gelu                
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       10                  Batch Size:         32                  
+  Patience:           3                   Learning Rate:      0.001               
+  Des:                Exp                 Loss:               MSE                 
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+Use GPU: cuda:0
+Total trainable parameters: 0.00M
+Model components:
+
+learnable weight parameters: 0
+total parameters: 1
+>>>>>>>start training : long_term_forecast_syn_lag_150_experiment_BVAR_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 105
+val 15
+test 30
+BVAR training start!
+Epoch: 1 cost time: 2.702740430831909
+Epoch: 1, Steps: 4 | Train Loss: 0.7941484 Vali Loss: 0.8464745 Test Loss: 0.7761711
+Validation loss decreased (inf --> 0.846475).  Saving model ...
+Updating learning rate to 0.001
+>>>>>>>testing : long_term_forecast_syn_lag_150_experiment_BVAR_toy_ftM_sl96_ll48_pl96_dm64_nh1_el2_dl1_df128_expand2_dc4_fc3_ebtimeF_dtTrue_Exp_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Start Testing!
+test 30
+test shape: (30, 96, 6) (30, 96, 6)
+test shape: (30, 96, 6) (30, 96, 6)
+Calculating metrics...
+mse:0.7761709690093994, mae:0.6638414859771729, dtw:Not calculated
+Per-sample MSE  | mean: 0.7762  median: 0.7651  std: 0.1272  min: 0.4698  max: 1.0630  sample-0: 0.6603
