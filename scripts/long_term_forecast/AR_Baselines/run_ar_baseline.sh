@@ -3,16 +3,20 @@
 #   datasets: ETTh1, ETTh2, ETTm1, ETTm2, ECL, weather
 #   seq_len: 96
 #   pred_len: 96, 192
+#   default models: DeepVAR, LSTM_AR, LSTNet（与 writing/AR_baseline_and_latent_v7_merged.md 一致；不含 AutoTimes / TCN_AR）
 #
 # Example:
-#   MODEL_LIST="LSTM_AR TCN_AR" bash scripts/long_term_forecast/AR_Baselines/run_ar_baseline.sh
+#   MODEL_LIST="LSTM_AR" bash scripts/long_term_forecast/AR_Baselines/run_ar_baseline.sh
+#   DATASET_FILTER="ETTh1 ETTh2 ETTm1" MODEL_LIST="DeepVAR LSTNet" bash .../run_ar_baseline.sh
 
 set -euo pipefail
 
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 seed="${SEED:-2021}"
 pred_lens="${PRED_LENS:-96 192}"
-model_list="${MODEL_LIST:-AutoTimes DeepVAR LSTM_AR TCN_AR LSTNet}"
+model_list="${MODEL_LIST:-DeepVAR LSTM_AR LSTNet}"
+# 空格分隔；为空则跑全部。例: DATASET_FILTER="ETTh1 ETTm2 weather"
+dataset_filter="${DATASET_FILTER:-}"
 
 datasets=(
   "ETTh1   ./dataset/ETT-small/   ETTh1.csv       ETTh1   7"
@@ -128,6 +132,19 @@ set_hparams() {
 
 for ds_line in "${datasets[@]}"; do
   read -r ds_name root_path data_path data_key enc_in <<< "$ds_line"
+
+  if [[ -n "$dataset_filter" ]]; then
+    skip=1
+    for token in $dataset_filter; do
+      if [[ "$token" == "$ds_name" ]]; then
+        skip=0
+        break
+      fi
+    done
+    if (( skip )); then
+      continue
+    fi
+  fi
 
   for model_name in $model_list; do
     set_hparams "$model_name" "$enc_in"
