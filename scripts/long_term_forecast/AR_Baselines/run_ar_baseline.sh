@@ -12,7 +12,7 @@ set -euo pipefail
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 seed="${SEED:-2021}"
 pred_lens="${PRED_LENS:-96 192}"
-model_list="${MODEL_LIST:-AutoTimes DeepVAR GPVAR LSTM_AR TCN_AR LSTNet}"
+model_list="${MODEL_LIST:-AutoTimes DeepVAR LSTM_AR TCN_AR LSTNet}"
 
 datasets=(
   "ETTh1   ./dataset/ETT-small/   ETTh1.csv       ETTh1   7"
